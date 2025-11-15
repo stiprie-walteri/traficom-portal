@@ -52,6 +52,13 @@ export function Example1() {
     <ReactMarkdown 
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeRaw]}
+      components={{
+        table: ({node, ...props}) => (
+          <div className="table-wrapper">
+            <table {...props} />
+          </div>
+        ),
+      }}
     >
       {orgSubmission}
     </ReactMarkdown>
