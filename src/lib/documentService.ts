@@ -100,7 +100,7 @@ const parseLegislation = async (): Promise<ParseResult> => {
     const issues: NormalizedIssue[] = (rawIssues || []).map((raw, i) => {
       const submission_excerpt = raw["submission_excerpt"] ?? raw["excerpt"] ?? undefined;
       const explanation = raw["explanation"] ?? raw["comment"] ?? undefined;
-      const main_code = raw["main_code"] ?? raw["mainCode"] ?? raw["code"] ?? undefined;
+      const main_code = raw["main_code"] ?? raw["mainCode"] ?? raw["references"] ?? raw["code"] ?? undefined;
       const code = raw["code"] ?? undefined;
       const legislation_source = raw["legislation_source"] ?? raw["legislationSource"] ?? undefined;
       const submission_sections = Array.isArray(raw["submission_sections"]) ? (raw["submission_sections"] as string[]) : undefined;

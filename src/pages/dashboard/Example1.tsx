@@ -150,7 +150,7 @@ export function Example1() {
     }
     
     const newwarning = issues[newIndex]
-    setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.submission_sections ?? [] })
+    setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.main_code ? [newwarning.main_code] : [] })
     
     // Scroll to the element only if it's not in view
     const element = document.getElementById(newwarning.id)
@@ -189,13 +189,16 @@ export function Example1() {
     }
 
     // Process each issue as a warning pair
-    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', submission_sections }) => {
-      const references = submission_sections ?? []
+    let matchedIds: string[] = []
+    let unmatchedIds: string[] = []
+    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
+      const references = main_code ? [main_code] : []
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
       const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
       const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
 
       if (normalizedIndex !== -1) {
+        matchedIds.push(id)
         // Map back to original text position for start
         let normalizedPos = 0
         let originalStartIndex = 0
@@ -328,13 +331,21 @@ export function Example1() {
             affectedNodes.forEach(({ node }) => {
               node.parentNode?.removeChild(node)
             })
-          }
         }
       }
-    })
-  }
+    } else {
+      unmatchedIds.push(id)
+    }
+  })
 
-  // Event delegation handler - use click but with optimized spans
+  // Reorder issues: matched at start and end, unmatched in middle
+  setIssues(prev => {
+    const matchedIssues = prev.filter(i => matchedIds.includes(i.id))
+    const unmatchedIssues = prev.filter(i => unmatchedIds.includes(i.id))
+    const half = Math.floor(matchedIssues.length / 2)
+    return [...matchedIssues.slice(0, half), ...unmatchedIssues, ...matchedIssues.slice(half)]
+  })
+}  // Event delegation handler - use click but with optimized spans
   const handleArticleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
     const warningId = target.dataset.warningId
@@ -360,13 +371,12 @@ export function Example1() {
   return (
     <div className="relative p-8" onClick={() => setActivewarning(null)}>
 
+      {/* Page content shown only after loading */}
       {isLoading ? (
         <div className="bg-white w-full h-full flex items-center justify-center">
           <ChessLoader duration={180} />
         </div>
       ) : (
-
-      /* Page content shown only after loading */
       <>
       {issues.length > 0 && (
         <button
@@ -417,7 +427,7 @@ export function Example1() {
               <button
                 key={item.id}
                 onClick={() => {
-                  setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.submission_sections ?? [] });
+                  setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.main_code ? [item.main_code] : [] });
                   setShowwarningsList(false);
                   const element = document.getElementById(item.id);
                   if (element) {
@@ -448,7 +458,7 @@ export function Example1() {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-sm text-gray-900">warning</h3>
+            <h3 className="font-semibold text-sm text-gray-900">Warning</h3>
             <button
               onClick={() => setActivewarning(null)}
               className="text-gray-500 hover:text-gray-800 ml-2"
