@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 
 export function DocumentView() {
   const { id } = useParams<{ id: string }>()
-  const [analysis, setAnalysis] = useState(getMockAnalysis(id || "1"))
+  const [analysis] = useState(getMockAnalysis(id || "1"))
   const [selectedFlaw, setSelectedFlaw] = useState<string | null>(null)
 
   const getFlawIcon = (type: "critical" | "warning" | "info") => {

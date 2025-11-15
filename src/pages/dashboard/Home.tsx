@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { mockDashboardStats } from "@/lib/mockData"
-import { FileText, CheckCircle2, AlertCircle, TrendingUp, Upload, ChevronDown, Target, Shield, Zap } from "lucide-react"
+import { FileText, CheckCircle2, AlertCircle, TrendingUp, Upload, ChevronDown, Target, Shield} from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
