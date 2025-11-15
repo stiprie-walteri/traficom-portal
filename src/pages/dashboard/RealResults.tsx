@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoaderLong } from "@/components/ChessLoader"
+import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
 
 // warnings and highlights are provided by the backend `issues` list
@@ -33,7 +34,8 @@ export function RealResults() {
     subsectionsFound: number;
     subsectionsNotFound: number;
     sectionsNotInLegislation: number;
-  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+    mainNotFoundList: string[];
+  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
   const hasProcessed = useRef(false)
 
   const markdownContent = useMemo(() => (
@@ -92,6 +94,7 @@ export function RealResults() {
             subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
             subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
             sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+            mainNotFoundList: Array.isArray(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) ? (m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) as string[] : [],
           }
 
           setMetricsCounts(newMetrics)
@@ -102,7 +105,7 @@ export function RealResults() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
         } catch {
-          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
       }
       setIsLoading(false)
@@ -147,6 +150,7 @@ export function RealResults() {
             subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
             subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
             sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+            mainNotFoundList: Array.isArray(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) ? (m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) as string[] : [],
           }
 
           setMetricsCounts(newMetrics)
@@ -157,7 +161,7 @@ export function RealResults() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
         } catch {
-          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
       }
     } catch (err) {
@@ -629,6 +633,17 @@ export function RealResults() {
               <span className="text-lg leading-none">Incorrect Sections</span>
             </div>
           </div>
+
+          {metricsCounts.mainNotFoundList.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Missing Sections</h3>
+              <div className="flex flex-wrap gap-2">
+                {metricsCounts.mainNotFoundList.map((section, index) => (
+                  <Badge key={index} variant="destructive" className="rounded-none">{section}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 

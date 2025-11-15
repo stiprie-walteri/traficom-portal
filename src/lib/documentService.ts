@@ -28,6 +28,7 @@ export type NormalizedIssue = {
   submission_excerpt?: string;
   explanation?: string;
   submission_sections?: string[];
+  severity?: string;
   raw?: Record<string, unknown>;
 };
 
@@ -106,6 +107,7 @@ const parseLegislation = async (): Promise<ParseResult> => {
       const code = raw["code"] ?? undefined;
       const legislation_source = raw["legislation_source"] ?? raw["legislationSource"] ?? undefined;
       const submission_sections = Array.isArray(raw["submission_sections"]) ? (raw["submission_sections"] as string[]) : undefined;
+      const severity = raw["severity"] ?? undefined;
 
       const id = normalizeId(main_code, i);
 
@@ -117,6 +119,7 @@ const parseLegislation = async (): Promise<ParseResult> => {
         submission_excerpt: typeof submission_excerpt === "string" ? submission_excerpt : undefined,
         explanation: typeof explanation === "string" ? explanation : undefined,
         submission_sections: submission_sections,
+        severity: typeof severity === "string" ? severity : undefined,
         raw: raw,
       };
     });
@@ -202,6 +205,7 @@ const parseReal = async (file: File): Promise<ParseResult> => {
       const code = raw["code"] ?? undefined;
       const legislation_source = raw["legislation_source"] ?? raw["legislationSource"] ?? undefined;
       const submission_sections = Array.isArray(raw["submission_sections"]) ? (raw["submission_sections"] as string[]) : undefined;
+      const severity = raw["severity"] ?? undefined;
 
       const id = normalizeId(main_code, i);
 
@@ -213,6 +217,7 @@ const parseReal = async (file: File): Promise<ParseResult> => {
         submission_excerpt: typeof submission_excerpt === "string" ? submission_excerpt : undefined,
         explanation: typeof explanation === "string" ? explanation : undefined,
         submission_sections: submission_sections,
+        severity: typeof severity === "string" ? severity : undefined,
         raw: raw,
       };
     });

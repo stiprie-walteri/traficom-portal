@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
+import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
 
 // warnings and highlights are provided by the backend `issues` list
@@ -30,7 +31,8 @@ export function Example1() {
     subsectionsFound: number;
     subsectionsNotFound: number;
     sectionsNotInLegislation: number;
-  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+    mainNotFoundList: string[];
+  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
   const hasProcessed = useRef(false)
 
   const markdownContent = useMemo(() => (
@@ -91,6 +93,7 @@ export function Example1() {
             subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
             subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
             sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+            mainNotFoundList: Array.isArray(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) ? (m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) as string[] : [],
           }
 
           setMetricsCounts(newMetrics)
@@ -101,7 +104,7 @@ export function Example1() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
         } catch {
-          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
       }
     } catch (err) {
@@ -580,6 +583,20 @@ export function Example1() {
               <span className="text-lg leading-none">Incorrect Sections</span>
             </div>
           </div>
+
+          {metricsCounts.mainNotFoundList.length > 0 && (
+            <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
+              <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
+              <div className="flex flex-wrap gap-2">
+                {metricsCounts.mainNotFoundList.map((section, index) => (
+                  <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                    {section}
+                  </Badge>
+                ))}
+              </div>
+              
+            </div>
+          )}
 
           <div className="border-t border-slate-300 my-6"></div>
 
