@@ -3,7 +3,6 @@ import { Logo } from "@/components/Logo"
 import { FileStack, FileUp, FileText } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import checkMateImg from "@/assets/CheckMate.png"
-import dotsBg from "@/assets/dots.svg"
 
 interface FallingDocument {
   id: number
