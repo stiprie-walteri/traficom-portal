@@ -167,48 +167,52 @@ export function DashboardLayout() {
 
                   {/* Document List */}
                   <div className="max-h-[400px] overflow-y-auto space-y-0.5 pl-3">
-                    {mockDocuments.map((doc) => (
-                      <Link key={doc.id} to={`/dashboard/document/${doc.id}`} onClick={handleNavClick}>
-                        <div
-                          className={cn(
-                            "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
-                            isActive(`/dashboard/document/${doc.id}`)
-                              ? "bg-[hsl(var(--sidebar-active))]"
-                              : "hover:bg-[hsl(var(--sidebar-hover))]"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
-                            <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
-                              {doc.title}
-                            </h3>
-                            {doc.status === "analyzed" && doc.complianceScore && (
-                              <span
-                                className={cn(
-                                  "text-xs font-bold flex-shrink-0",
-                                  doc.complianceScore >= 90
-                                    ? "text-green-600"
-                                    : doc.complianceScore >= 75
-                                    ? "text-blue-600"
-                                    : "text-red-600"
-                                )}
-                              >
-                                {doc.complianceScore}%
-                              </span>
+                    {mockDocuments.map((doc) => {
+                      // Special handling for document 5 to link to example-1
+                      const docPath = doc.id === "5" ? "/dashboard/example-1" : `/dashboard/document/${doc.id}`
+                      return (
+                        <Link key={doc.id} to={docPath} onClick={handleNavClick}>
+                          <div
+                            className={cn(
+                              "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
+                              isActive(docPath)
+                                ? "bg-[hsl(var(--sidebar-active))]"
+                                : "hover:bg-[hsl(var(--sidebar-hover))]"
                             )}
-                          </div>
-                          <div className="flex items-center justify-between overflow-hidden">
-                            <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-                              {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </span>
-                            {doc.status === "analyzing" && (
-                              <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
-                                Analyzing...
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
+                              <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
+                                {doc.title}
+                              </h3>
+                              {doc.status === "analyzed" && doc.complianceScore && (
+                                <span
+                                  className={cn(
+                                    "text-xs font-bold flex-shrink-0",
+                                    doc.complianceScore >= 90
+                                      ? "text-green-600"
+                                      : doc.complianceScore >= 75
+                                      ? "text-blue-600"
+                                      : "text-red-600"
+                                  )}
+                                >
+                                  {doc.complianceScore}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between overflow-hidden">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                                {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                               </span>
-                            )}
+                              {doc.status === "analyzing" && (
+                                <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
+                                  Analyzing...
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </Link>
-                    ))}
+                        </Link>
+                      )
+                    })}
                   </div>
                 </div>
               )}

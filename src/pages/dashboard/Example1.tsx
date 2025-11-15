@@ -581,6 +581,8 @@ export function Example1() {
             </div>
           </div>
 
+          <div className="border-t border-slate-300 my-6"></div>
+
         </div>
 
         <article
