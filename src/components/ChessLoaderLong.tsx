@@ -1,4 +1,4 @@
-export function ChessLoaderLong({ duration = 1200000 }: { duration?: number }) {
+export function ChessLoaderLong({ duration = 1200 }: { duration?: number }) {
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] w-full">
       <div className="flex flex-col items-center gap-6">

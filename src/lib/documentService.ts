@@ -80,7 +80,9 @@ const parseLegislation = async (): Promise<ParseResult> => {
     form.append("file", file as Blob, "file");
 
     // Use axios directly so browser sets the correct Content-Type with boundary
-    const response = await axios.get<RawApiResponse>("/api/parse-legislation-mock");
+    const response = await axios.get<RawApiResponse>("/api/parse-legislation-mock",{
+        timeout: 3000000 
+    });
     const res: RawApiResponse = response.data ?? {};
 
     const markdown = safeString(res.markdown ?? "");
@@ -174,7 +176,9 @@ const parseReal = async (file: File): Promise<ParseResult> => {
     form.append("file", file, file.name);
 
     // Use axios directly so browser sets the correct Content-Type with boundary
-    const response = await axios.post<RawApiResponse>("/api/parse-legislation", form);
+    const response = await axios.post<RawApiResponse>("/api/parse-legislation", form,{
+        timeout: 3000000 
+    });
     const res: RawApiResponse = response.data ?? {};
 
     const markdown = safeString(res.markdown ?? "");
