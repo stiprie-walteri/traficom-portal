@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -6,9 +6,11 @@ import { mockDashboardStats } from "@/lib/mockData"
 import { FileText, CheckCircle2, AlertCircle, TrendingUp, Upload, ChevronDown, Target, Shield} from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import logoPng from "@/assets/logo.png"
 
 export function Home() {
   const stats = mockDashboardStats
+  const navigate = useNavigate()
   const [openFaq, setOpenFaq] = useState<number | null>(null)
 
   const faqs = [
@@ -39,7 +41,14 @@ export function Home() {
       {/* Hero Section - Compact */}
       <div className="bg-muted/40 border-b border-slate-300">
         <div className="container mx-auto px-6 py-8">
-          <h1 className="text-3xl font-bold mb-2">♔ Checkmate</h1>
+          <button 
+            className="flex items-center gap-2 mb-2 hover:opacity-70 transition-opacity"
+            onClick={() => navigate('/')}
+            title="Go to home"
+          >
+            <img src={logoPng} alt="Logo" className="h-8 w-8 object-contain" />
+            <h1 className="text-3xl font-bold">Checkmate</h1>
+          </button>
           <p className="text-base text-muted-foreground max-w-2xl mb-5">
             Ensure your regulatory documents comply with Traficom standards. 
             Get instant analysis with detailed feedback on flaws and missing sections.
@@ -187,9 +196,14 @@ export function Home() {
         {/* Call to Action */}
         <Card className="mb-10 bg-primary text-primary-foreground hover:shadow-lg transition-shadow">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CardTitle className="text-2xl">♔ Checkmate</CardTitle>
-            </div>
+            <button 
+              className="flex items-center gap-2 mb-2 hover:opacity-70 transition-opacity"
+              onClick={() => navigate('/')}
+              title="Go to home"
+            >
+              <img src={logoPng} alt="Logo" className="h-6 w-6 object-contain" />
+              <CardTitle className="text-2xl">Checkmate</CardTitle>
+            </button>
             <CardDescription className="text-primary-foreground/90 text-base">
               Upload a document now and get instant compliance analysis with detailed feedback.
             </CardDescription>

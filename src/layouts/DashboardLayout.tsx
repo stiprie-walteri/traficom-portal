@@ -1,14 +1,16 @@
-import { Outlet, Link, useLocation } from "react-router-dom"
-import { Home, Upload, FileText, Search, PanelLeftClose, User, Menu } from "lucide-react"
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
+import { Home, Upload, FileText, Search, PanelLeftClose, PanelRightClose, User, Menu } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockDocuments } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
+import logoPng from "@/assets/logo.png"
 
 export function DashboardLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
@@ -59,24 +61,26 @@ export function DashboardLayout() {
         )}>
           {/* Logo/Brand Header */}
           <div className="p-6 pb-4">
-            <div className="flex items-center justify-between overflow-hidden">
-              <div className="overflow-hidden flex items-center">
+            <div className={cn("flex items-center overflow-hidden", isCollapsed ? "justify-start" : "justify-between")}>
+              {!isCollapsed && (
                 <button
-                  className="text-xl font-bold flex-shrink-0 hover:opacity-70 transition-opacity"
-                  onClick={() => {
-                    if (window.innerWidth < 768) {
-                      setIsMobileOpen(false)
-                    } else {
-                      setIsCollapsed(!isCollapsed)
-                    }
-                  }}
-                  title={isCollapsed ? "Open sidebar" : "Close sidebar"}
-                  aria-label={isCollapsed ? "Open sidebar" : "Close sidebar"}
+                  className="flex-shrink-0 hover:opacity-70 transition-opacity"
+                  onClick={() => navigate('/')}
+                  title="Go to home"
+                  aria-label="Go to home"
                 >
-                  ♔
+                  <img src={logoPng} alt="Logo" className="h-6 w-6 object-contain" />
                 </button>
-                {!isCollapsed && <span className="text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis ml-2">Checkmate</span>}
-              </div>
+              )}
+              {!isCollapsed && (
+                <button
+                  className="text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis ml-2 hover:opacity-70 transition-opacity flex-1 text-left"
+                  onClick={() => navigate('/')}
+                  title="Go to home"
+                >
+                  Checkmate
+                </button>
+              )}
               {!isCollapsed && (
                 <Button
                   variant="ghost"
@@ -92,6 +96,19 @@ export function DashboardLayout() {
                   title="Close sidebar"
                 >
                   <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              )}
+              {isCollapsed && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0 justify-start"
+                  onClick={() => {
+                    setIsCollapsed(!isCollapsed)
+                  }}
+                  title="Open sidebar"
+                >
+                  <PanelRightClose className="h-4 w-4" />
                 </Button>
               )}
             </div>
@@ -239,10 +256,16 @@ export function DashboardLayout() {
               style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
             >
               <div className="p-6 pb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold">♔</span>
+                <button
+                  className="flex items-center gap-2 hover:opacity-70 transition-opacity"
+                  onClick={() => navigate('/')}
+                  title="Go to home"
+                >
+                  <div className="h-6 w-6 flex-shrink-0">
+                    <img src={logoPng} alt="Logo" className="h-full w-full object-contain" />
+                  </div>
                   <span className="text-xl font-bold">Checkmate</span>
-                </div>
+                </button>
                 <Button
                   variant="ghost"
                   size="icon"
