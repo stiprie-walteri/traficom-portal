@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 /*
   THEME CUSTOMIZATION GUIDE
@@ -136,3 +137,57 @@
   animation-iteration-count: infinite;
 }
 }
+
+/* Cell Division Table Styling - Clear individual cell borders */
+.prose table {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1em 0;
+  border: 2px solid #d0d7de;
+}
+
+.prose thead {
+  background-color: #f6f8fa;
+}
+
+.prose th {
+  padding: 10px 15px;
+  border: 1px solid #d0d7de;
+  border-right: 2px solid #d0d7de;
+  border-bottom: 2px solid #d0d7de;
+  font-weight: 600;
+  font-size: 1rem;
+  text-align: left;
+  background-color: #f6f8fa;
+}
+
+.prose th:last-child {
+  border-right: 1px solid #d0d7de;
+}
+
+.prose td {
+  padding: 10px 15px;
+  border: 1px solid #d0d7de;
+  border-right: 2px solid #d0d7de;
+  font-size: 0.95rem;
+}
+
+.prose td:last-child {
+  border-right: 1px solid #d0d7de;
+}
+
+.prose tbody tr {
+  background-color: #ffffff;
+}
+
+.prose tbody tr:nth-child(2n) {
+  background-color: #f6f8fa;
+}
+
+.prose tbody tr:last-child td {
+  border-bottom: 1px solid #d0d7de;
+}
+
+

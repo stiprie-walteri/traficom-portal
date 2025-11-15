@@ -4,6 +4,7 @@ import { LandingPage } from "@/pages/LandingPage"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
+import { Example1 } from "@/pages/Example1"
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Upload />} />
           <Route path="document/:id" element={<DocumentView />} />
+          <Route path="example-1" element={<Example1 />} />
         </Route>
 
         {/* Catch all */}

@@ -1,7 +1,6 @@
-import { Outlet, Link, useLocation } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, User, Menu, Moon, Sun } from "lucide-react"
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
+import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen, Moon, Sun } from "lucide-react"
 import { PanelRightClose } from "lucide-react"
-import { useNavigate } from "react-router-dom"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -95,7 +94,7 @@ export function DashboardLayout() {
                   title="Go to home"
                   aria-label="Go to home"
                 >
-                  <img src={logoPng} alt="Logo" className="h-6 w-6 object-contain" />
+                  <img src={logoPng} alt="Logo" className="h-4 w-4 object-contain" />
                 </button>
               )}
               {!isCollapsed && (
@@ -155,6 +154,20 @@ export function DashboardLayout() {
               >
                 <Upload className="h-4 w-4 flex-shrink-0" />
                 {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Upload Document</span>}
+              </div>
+            </Link>
+
+            <Link to="/dashboard/example-1" title="Example Document" onClick={handleNavClick}>
+              <div
+                className={cn(
+                  "pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm",
+                  isActive("/dashboard/example-1")
+                    ? "bg-[hsl(var(--sidebar-active))]"
+                    : "hover:bg-[hsl(var(--sidebar-hover))]"
+                )}
+              >
+                <BookOpen className="h-4 w-4 flex-shrink-0" />
+                {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Example Document</span>}
               </div>
             </Link>
 
