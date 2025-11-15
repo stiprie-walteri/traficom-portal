@@ -1,46 +1,89 @@
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/Logo"
-import { LogIn, LayoutGrid } from "lucide-react"
+import { FileStack, FileUp, FileText } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import checkMateImg from "@/assets/CheckMate.png"
+import dotsBg from "@/assets/dots.svg"
+
+interface FallingDocument {
+  id: number
+  left: number
+  delay: number
+  duration: number
+}
+
+// Generate static documents array with more documents
+const documents: FallingDocument[] = Array.from({ length: 120 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  delay: Math.random() * 20 - 20, // Negative delays to start some animations mid-cycle
+  duration: 15 + Math.random() * 4,
+}))
 
 export function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="flex min-h-screen items-center bg-white px-8 md:px-16 lg:px-24">
-      <div className="w-full max-w-xl space-y-8">
+    <div className="relative flex min-h-screen items-center bg-white px-8 md:px-16 lg:px-24 overflow-hidden" style={{
+      backgroundImage: 'radial-gradient(circle, rgba(209, 213, 219, 0.1) 2px, transparent 1px)',
+      backgroundSize: '15px 15px'
+    }}>
+
+      <div className="absolute inset-0 pointer-events-none z-0">
+        {documents.map((doc) => (
+          <div
+            key={doc.id}
+            className="absolute animate-fall opacity-20"
+            style={{
+              left: `${doc.left}%`,
+              top: "-10rem",
+              animationDelay: `${doc.delay}s`,
+              animationDuration: `${doc.duration}s`,
+            }}
+          >
+            <FileText className="w-6 h-6 text-gray-400" />
+          </div>
+        ))}
+      </div>
+
+      {/* CheckMate Image - Right Side */}
+      <div className="absolute right-0 top-1/2 -translate-y-3/9 w-[60%] max-w-none pointer-events-none z-0">
+        <img src={checkMateImg} alt="CheckMate Documentation" className="w-full h-auto" />
+      </div>
+
+      <div className="w-full max-w-xl space-y-8 relative z-10">
         {/* Logo */}
         <div>
           <Logo />
         </div>
 
         {/* Title and Subtitle */}
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold text-black">
-            LDDK sēžu pārvaldības portāls
+        <div className="space-y-4">
+          <h1 className="text-6xl font-bold text-black">
+            CheckMate
           </h1>
-          <p className="text-lg text-gray-700">
-            LDDK parlamentāro un likumdošanas sēžu pārvaldība
+          <p className="text-2xl text-gray-700">
+            Audits that <span className="italic">start clean, stay clean.</span>        
           </p>
         </div>
 
         {/* Login Buttons */}
-        <div className="space-y-3">
+        <div className="flex flex-col gap-4 max-w-xs">
           <Button 
-            className="w-full h-11 text-sm bg-black hover:bg-gray-800 text-white"
+            className="h-14 text-base bg-black hover:bg-gray-800 text-white justify-start"
             onClick={() => navigate('/dashboard')}
           >
-            <LogIn className="mr-2 h-4 w-4" />
-            Autorizēties
+          <FileStack className="mr-2 h-5 w-5" />
+            See in action
           </Button>
           
           <Button 
             variant="outline" 
-            className="w-full h-11 text-sm border-2 border-black text-black hover:bg-gray-100"
+            className="h-14 text-base border-2 border-black text-black hover:bg-gray-100 justify-start"
             onClick={() => navigate('/dashboard')}
           >
-            <LayoutGrid className="mr-2 h-4 w-4" />
-            Ienākt bez autorizācijas
+            <FileUp className="mr-2 h-5 w-5" />
+            Test upload
           </Button>
         </div>
       </div>
