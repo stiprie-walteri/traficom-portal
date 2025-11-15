@@ -378,7 +378,7 @@ export function Example1() {
         </div>
       ) : (
       <>
-      {issues.length > 0 && (
+      {issues.length > 0 && !activewarning && !showwarningsList && (
         <button
           onClick={(e) => {
             e.stopPropagation();
