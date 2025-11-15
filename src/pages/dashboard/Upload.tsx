@@ -142,7 +142,7 @@ export function Upload() {
                   </p>
                   <p className="text-xs text-muted-foreground mt-3 flex items-center gap-2 justify-center">
                     <FileText className="h-3 w-3" />
-                    PDF, DOC, DOCX • Max 50MB
+                    PDF • Max 50MB
                   </p>
                 </div>
                 <input

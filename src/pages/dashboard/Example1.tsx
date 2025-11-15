@@ -7,10 +7,29 @@ import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
 
+const severityHighlightClasses: Record<string, string> = {
+  error: "bg-red-300 hover:bg-red-400",
+  warning: "bg-amber-200 hover:bg-amber-300",
+  info: "bg-sky-100 hover:bg-sky-200",
+}
+
+const getHighlightClassBySeverity = (severity?: string) => {
+  const normalized = severity?.toLowerCase()
+  const severityClasses = normalized && severityHighlightClasses[normalized] ? severityHighlightClasses[normalized] : "bg-yellow-200 hover:bg-yellow-300"
+  return `cursor-pointer relative ${severityClasses}`
+}
+
+const getSeverityLabel = (severity?: string) => {
+  const normalized = severity?.toLowerCase()
+  if (normalized === "error") return "Error"
+  if (normalized === "info") return "Info"
+  return "Warning"
+}
+
 // warnings and highlights are provided by the backend `issues` list
 
 export function Example1() {
-  const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
+  const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[]; severity?: string } | null>(null)
   const [showwarningsList, setShowwarningsList] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [, setApiError] = useState<string | null>(null)
@@ -153,7 +172,13 @@ export function Example1() {
     }
     
     const newwarning = issues[newIndex]
-    setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.main_code ? [newwarning.main_code] : [] })
+    setActivewarning({
+      id: newwarning.id,
+      text: newwarning.submission_excerpt ?? '',
+      warning: newwarning.explanation ?? '',
+      references: newwarning.main_code ? [newwarning.main_code] : [],
+      severity: newwarning.severity ?? 'warning',
+    })
     
     // Scroll to the element only if it's not in view
     const element = document.getElementById(newwarning.id)
@@ -194,8 +219,9 @@ export function Example1() {
     // Process each issue as a warning pair
     let matchedIds: string[] = []
     let unmatchedIds: string[] = []
-    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
+    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code, severity }) => {
       const references = main_code ? [main_code] : []
+      const highlightClass = getHighlightClassBySeverity(severity)
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
       const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
       const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
@@ -248,7 +274,7 @@ export function Example1() {
         // Create wrapper span
         const span = document.createElement('span')
         span.id = id
-        span.className = 'bg-yellow-200 hover:bg-yellow-300 cursor-pointer px-1 rounded relative'
+        span.className = highlightClass
         span.style.willChange = 'background-color'
         span.style.touchAction = 'manipulation'
         span.style.userSelect = 'none'
@@ -258,6 +284,7 @@ export function Example1() {
         span.dataset.warningText = highlightText ?? ''
         span.dataset.warning = warning ?? ''
         span.dataset.references = JSON.stringify(references)
+        span.dataset.severity = severity ?? "warning"
 
         if (affectedNodes.length === 1) {
           // Single node case
@@ -364,7 +391,8 @@ export function Example1() {
           id: warningId,
           text: warningText,
           warning,
-          references: JSON.parse(referencesStr)
+          references: JSON.parse(referencesStr),
+          severity: target.dataset.severity ?? "warning",
         })
         e.stopPropagation()
       }
@@ -430,7 +458,13 @@ export function Example1() {
               <button
                 key={item.id}
                 onClick={() => {
-                  setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.main_code ? [item.main_code] : [] });
+                  setActivewarning({
+                    id: item.id,
+                    text: item.submission_excerpt ?? '',
+                    warning: item.explanation ?? '',
+                    references: item.main_code ? [item.main_code] : [],
+                    severity: item.severity ?? 'warning',
+                  });
                   setShowwarningsList(false);
                   const element = document.getElementById(item.id);
                   if (element) {
@@ -461,7 +495,9 @@ export function Example1() {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-sm text-gray-900">Warning</h3>
+            <h3 className="font-semibold text-sm text-gray-900">
+              {getSeverityLabel(activewarning?.severity)}
+            </h3>
             <button
               onClick={() => setActivewarning(null)}
               className="text-gray-500 hover:text-gray-800 ml-2"
