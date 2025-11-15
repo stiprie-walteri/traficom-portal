@@ -1,12 +1,12 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen, Moon, Sun } from "lucide-react"
+import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen } from "lucide-react"
 import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockDocuments } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import logoPng from "@/assets/logo.png"
 
 export function DashboardLayout() {
@@ -14,30 +14,6 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Initialize from localStorage or default to light mode
-    const saved = localStorage.getItem('theme')
-    if (saved) {
-      return saved === 'dark'
-    }
-    return false // Default to light mode
-  })
-
-  // Apply theme class to document root
-  useEffect(() => {
-    const root = document.documentElement
-    if (isDarkMode) {
-      root.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-    } else {
-      root.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-    }
-  }, [isDarkMode])
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode)
-  }
 
   const isActive = (path: string) => {
     if (path === "/dashboard" && location.pathname === "/dashboard") {
@@ -86,7 +62,7 @@ export function DashboardLayout() {
         )}>
           {/* Logo/Brand Header */}
           <div className="p-6 pb-4">
-            <div className={cn("flex items-center overflow-hidden", isCollapsed ? "justify-start" : "justify-between")}>
+            <div className={cn("flex items-center overflow-hidden", isCollapsed ? "justify-center" : "justify-between")}>
               {!isCollapsed && (
                 <button
                   className="flex-shrink-0 hover:opacity-70 transition-opacity"
@@ -127,7 +103,7 @@ export function DashboardLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 flex-shrink-0 justify-start"
+                  className="h-8 w-8 flex-shrink-0"
                   onClick={() => {
                     setIsCollapsed(!isCollapsed)
                   }}
@@ -146,7 +122,8 @@ export function DashboardLayout() {
             <Link to="/dashboard" title="Upload Document" onClick={handleNavClick}>
               <div
                 className={cn(
-                  "pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm",
+                  "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
+                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
                   isActive("/dashboard")
                     ? "bg-[hsl(var(--sidebar-active))]"
                     : "hover:bg-[hsl(var(--sidebar-hover))]"
@@ -160,7 +137,8 @@ export function DashboardLayout() {
             <Link to="/dashboard/example-1" title="Example Document" onClick={handleNavClick}>
               <div
                 className={cn(
-                  "pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm",
+                  "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
+                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
                   isActive("/dashboard/example-1")
                     ? "bg-[hsl(var(--sidebar-active))]"
                     : "hover:bg-[hsl(var(--sidebar-hover))]"
@@ -181,8 +159,8 @@ export function DashboardLayout() {
                 }}
                 title="Documents"
                 className={cn(
-                  "w-full pl-3 pr-3 py-2.5 text-sm font-medium flex items-center gap-3 rounded-sm",
-                  isCollapsed && "hover:bg-[hsl(var(--sidebar-hover))] cursor-pointer transition-colors",
+                  "w-full py-2.5 text-sm font-medium flex items-center rounded-sm transition-colors",
+                  isCollapsed ? "pl-4 hover:bg-[hsl(var(--sidebar-hover))] cursor-pointer" : "pl-3 pr-3 gap-3",
                   location.pathname.includes("/dashboard/document/") && "bg-[hsl(var(--sidebar-active))]"
                 )}
               >
@@ -259,31 +237,12 @@ export function DashboardLayout() {
             </div>
           </nav>
 
-          {/* Theme Toggle */}
-          <div className="px-3 pb-2">
-            <button
-              onClick={toggleTheme}
-              className={cn(
-                "w-full pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm hover:bg-[hsl(var(--sidebar-hover))]"
-              )}
-              title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {isDarkMode ? (
-                <Sun className="h-4 w-4 flex-shrink-0" />
-              ) : (
-                <Moon className="h-4 w-4 flex-shrink-0" />
-              )}
-              {!isCollapsed && (
-                <span className="whitespace-nowrap overflow-hidden text-ellipsis">
-                  {isDarkMode ? "Light mode" : "Dark mode"}
-                </span>
-              )}
-            </button>
-          </div>
-
           {/* User Section at Bottom */}
           <div className="border-t border-slate-300 p-3">
-            <div className="pl-3 pr-3 py-2.5 flex items-center gap-3">
+            <div className={cn(
+              "py-2.5 flex items-center",
+              isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3"
+            )}>
               <User className="h-4 w-4 flex-shrink-0" />
               {!isCollapsed && (
                 <div className="flex flex-col overflow-hidden min-w-0">

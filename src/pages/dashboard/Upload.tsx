@@ -111,7 +111,7 @@ export function Upload() {
         </div>
 
         {/* Centered Header */}
-        <div className="mb-8 text-center max-w-3xl mx-auto">
+        <div className="mb-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
           <h1 className="text-2xl mb-2">Upload Document for Analysis</h1>
         </div>
 
