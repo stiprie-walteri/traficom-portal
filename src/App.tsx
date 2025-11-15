@@ -4,7 +4,7 @@ import { LandingPage } from "@/pages/LandingPage"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
-import { Example1 } from "@/pages/Example1"
+import { Example1 } from "@/pages/dashboard/Example1"
 
 function App() {
   return (
