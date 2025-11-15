@@ -11,4 +11,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://junction.zeiris.id.lv',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })
