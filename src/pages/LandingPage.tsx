@@ -50,19 +50,14 @@ export function LandingPage() {
         <img src={checkMateImg} alt="CheckMate Documentation" className="w-full h-auto" />
       </div>
 
-      <div className="w-full max-w-xl space-y-6 sm:space-y-8 relative z-10">
-        {/* Logo */}
-        <div>
-          <Logo />
-        </div>
-
+      <div className="w-full max-w-xl relative z-10">
         {/* Title and Subtitle */}
-        <div className="space-y-3 sm:space-y-4">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-black">
-            CheckMate
-          </h1>
-          <p className="text-lg sm:text-xl md:text-2xl text-gray-700">
-            Audits that <span className="italic">start clean, stay clean.</span>        
+        <div className="space-y-2 my-6">
+          <div className="w-64 sm:w-80 md:w-96">
+            <Logo />
+          </div>
+          <p className="text-2xl text-gray-700 font-['Courier_New',monospace] font-bold pl-2">
+            Consider it Checked!        
           </p>
         </div>
 

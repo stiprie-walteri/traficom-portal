@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { mockDocuments } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
-import logoPng from "@/assets/logo.png"
+import logoSvg from "@/assets/logo.svg"
 
 export function DashboardLayout() {
   const location = useLocation()
@@ -62,31 +62,22 @@ export function DashboardLayout() {
         )}>
           {/* Logo/Brand Header */}
           <div className="p-6 pb-4">
-            <div className={cn("flex items-center overflow-hidden", isCollapsed ? "justify-center" : "justify-between")}>
-              {!isCollapsed && (
+            {!isCollapsed && (
+              <div className="flex items-center justify-between">
                 <button
-                  className="flex-shrink-0 hover:opacity-70 transition-opacity"
+                  className="flex-1 hover:opacity-70 transition-opacity h-8 flex items-center"
                   onClick={() => navigate('/')}
                   title="Go to home"
                   aria-label="Go to home"
                 >
-                  <img src={logoPng} alt="Logo" className="h-4 w-4 object-contain" />
+                  <div className="w-full max-w-[160px]">
+                    <img src={logoSvg} alt="Logo" className="w-full h-auto object-contain" />
+                  </div>
                 </button>
-              )}
-              {!isCollapsed && (
-                <button
-                  className="text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis ml-2 hover:opacity-70 transition-opacity flex-1 text-left"
-                  onClick={() => navigate('/')}
-                  title="Go to home"
-                >
-                  Checkmate
-                </button>
-              )}
-              {!isCollapsed && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 flex-shrink-0"
+                  className="h-8 w-8 flex-shrink-0 ml-2"
                   onClick={() => {
                     if (window.innerWidth < 768) {
                       setIsMobileOpen(false)
@@ -98,8 +89,10 @@ export function DashboardLayout() {
                 >
                   <PanelLeftClose className="h-4 w-4" />
                 </Button>
-              )}
-              {isCollapsed && (
+              </div>
+            )}
+            {isCollapsed && (
+              <div className="flex justify-center">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -111,8 +104,8 @@ export function DashboardLayout() {
                 >
                   <PanelRightClose className="h-4 w-4" />
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="h-px bg-border mx-3" />
@@ -269,19 +262,18 @@ export function DashboardLayout() {
             >
               <div className="p-6 pb-4 flex items-center justify-between">
                 <button
-                  className="flex items-center gap-2 hover:opacity-70 transition-opacity"
+                  className="flex-1 hover:opacity-70 transition-opacity h-8 flex items-center"
                   onClick={() => navigate('/')}
                   title="Go to home"
                 >
-                  <div className="h-6 w-6 flex-shrink-0">
-                    <img src={logoPng} alt="Logo" className="h-full w-full object-contain" />
+                  <div className="w-full max-w-[140px]">
+                    <img src={logoSvg} alt="Logo" className="w-full h-auto object-contain" />
                   </div>
-                  <span className="text-xl font-bold">Checkmate</span>
                 </button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 flex-shrink-0"
+                  className="h-8 w-8 flex-shrink-0 ml-2"
                   onClick={() => setIsMobileOpen(true)}
                   aria-label="Open menu"
                 >
