@@ -1,12 +1,12 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen } from "lucide-react"
+import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen, Moon, Sun } from "lucide-react"
 import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockDocuments } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import logoPng from "@/assets/logo.png"
 
 export function DashboardLayout() {
@@ -14,6 +14,30 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Initialize from localStorage or default to light mode
+    const saved = localStorage.getItem('theme')
+    if (saved) {
+      return saved === 'dark'
+    }
+    return false // Default to light mode
+  })
+
+  // Apply theme class to document root
+  useEffect(() => {
+    const root = document.documentElement
+    if (isDarkMode) {
+      root.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      root.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+    }
+  }, [isDarkMode])
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode)
+  }
 
   const isActive = (path: string) => {
     if (path === "/dashboard" && location.pathname === "/dashboard") {
@@ -234,6 +258,28 @@ export function DashboardLayout() {
               )}
             </div>
           </nav>
+
+          {/* Theme Toggle */}
+          <div className="px-3 pb-2">
+            <button
+              onClick={toggleTheme}
+              className={cn(
+                "w-full pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm hover:bg-[hsl(var(--sidebar-hover))]"
+              )}
+              title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDarkMode ? (
+                <Sun className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <Moon className="h-4 w-4 flex-shrink-0" />
+              )}
+              {!isCollapsed && (
+                <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                  {isDarkMode ? "Light mode" : "Dark mode"}
+                </span>
+              )}
+            </button>
+          </div>
 
           {/* User Section at Bottom */}
           <div className="border-t border-slate-300 p-3">
