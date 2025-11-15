@@ -6,14 +6,6 @@ import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
 import { Example1 } from "@/pages/dashboard/Example1"
 
-// Route wrapper to handle document 5 specially
-function DocumentRouter() {
-  const { id } = useParams()
-  if (id === "5") {
-    return <Example1 />
-  }
-  return <DocumentView />
-}
 
 function App() {
   return (
