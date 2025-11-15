@@ -1,51 +1,36 @@
-import { useRef, useState, useMemo, useEffect } from "react"
+import { useRef, useState, useMemo, useEffect, useCallback } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
+import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
 
-const textsComments=[
-  {
-    id: 'comment-1',
-    text: 'It is accepted that these procedures do not override the necessity of complying with any new or amended regulation published by EASA from time to time where these new or amended regulations are in conflict with these procedures.',
-    comment: 'This is a standard disclaimer to ensure compliance with EASA regulations.',
-    references: ["European Union Aviation Safety Agency (EASA) Regulations No. 216/2008 and its subsequent amendments" , "European Union Aviation Safety Agency (EASA) Regulations No. 748/2012 and its subsequent amendments"]
-  },
-  {
-    id: 'comment-2',
-    text: 'Mr Stuart Hood Accountable Manager Air X Jet Support Limited',
-    comment: 'Skibidi',
-    references: ["Asian Union Aviation Safety Agency (EASA) Regulations No. 216/2008 and its subsequent amendments" , "Asian Union Aviation Safety Agency (EASA) Regulations No. 748/2012 and its subsequent amendments"]
-
-  },
-  {
-    id: 'comment-3',
-    text: 'The report shall include a brief summary, details of the maintenance error occurrence, root cause analysis, corrective action and recommended preventative action.',
-    comment: 'suka puka',
-    references: []
-
-  },
-  {
-    id: 'comment-4',
-    text: 'MAINTENANCE PROCEDURES',
-    comment: 'Skibassasasasaidi',
-    references: []
-
-  },
-  {
-    id: 'comment-5',
-    text: 'When a task is required to be handed over from one shift to the oncoming shift, the shift engineer handing over the task shall ensure that, as required, all work that has been accomplished on the off going shift has been signed for or certified on the maintenance records. This assures continuity of inspection',
-    comment: 'Skibidiasdasasdasdasdasd',
-    references: []
-
-  }
-]
+// warnings and highlights are provided by the backend `issues` list
 
 export function Example1() {
-  const [activeComment, setActiveComment] = useState<{ id: string; text: string; comment: string; references: string[] } | null>(null)
-  const [showCommentsList, setShowCommentsList] = useState(false)
+  const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
+  const [showwarningsList, setShowwarningsList] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [, setApiError] = useState<string | null>(null)
+  const [issues, setIssues] = useState<NormalizedIssue[]>([])
+  const [markdown, setMarkdown] = useState<string | null>(null)
+  const [, setLastResponse] = useState<ParseResult | null>(null)
+  // Always send fake file payload for testing
+  const [documentSummary, setDocumentSummary] = useState<{
+    name?: string;
+    missingSections?: number;
+    incorrectSections?: number;
+    correctnessScore?: number;
+    aiSummary?: string;
+  }>({})
+  const [metricsCounts, setMetricsCounts] = useState<{
+    mainFound: number;
+    mainNotFound: number;
+    subsectionsFound: number;
+    subsectionsNotFound: number;
+    sectionsNotInLegislation: number;
+  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
   const hasProcessed = useRef(false)
 
   const markdownContent = useMemo(() => (
@@ -53,32 +38,81 @@ export function Example1() {
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeRaw]}
       components={{
-        table: ({node, ...props}) => (
+        table: ({ ...props}) => (
           <div className="table-wrapper">
             <table {...props} />
           </div>
         ),
       }}
     >
-      {orgSubmission}
+      {markdown ?? orgSubmission}
     </ReactMarkdown>
-  ), [])
+  ), [markdown])
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  // Load function to fetch parsed document from the API
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    setApiError(null)
+    try {
+      // Always send a fake file object in the request body for testing
+
+      // send fake file as string in `content` to satisfy ParseRequest type
+      // we send a multipart/form-data fake file from the service
+      const res: ParseResult = await documentService.parseLegislation()
+      console.log('Parse result:', res);
+      setLastResponse(res)
+
+      if (!res.ok) {
+        setApiError(res.error ?? 'Failed to parse document')
+        setIssues([])
+        setMarkdown(orgSubmission)
+      } else {
+        setMarkdown(res.markdown || orgSubmission)
+        setIssues(res.issues || [])
+        setDocumentSummary({
+          name: res.summary?.organization ? `${res.summary.organization} MAINTENANCE ORGANISATION EXPOSITION` : undefined,
+          aiSummary: res.summary?.text,
+        })
+
+        // Read metrics arrays and set counts for the Summary UI
+        try {
+          const raw = (res.raw && typeof res.raw === 'object') ? (res.raw as Record<string, unknown>) : {}
+          const m = (res.metrics && typeof res.metrics === 'object')
+            ? (res.metrics as Record<string, unknown>)
+            : (raw.metrics && typeof raw.metrics === 'object')
+              ? (raw.metrics as Record<string, unknown>)
+              : {}
+
+          const count = (v: unknown): number => Array.isArray(v) ? v.length : 0
+
+          const newMetrics = {
+            mainFound: count(m['all_main_codes_found'] ?? m['allMainCodesFound'] ?? m['all_main_codes_found']),
+            mainNotFound: count(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']),
+            subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
+            subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
+            sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+          }
+
+          setMetricsCounts(newMetrics)
+
+          // correctness = mainFound / (mainFound + mainNotFound) as percentage
+          const totalMain = newMetrics.mainFound + newMetrics.mainNotFound
+          const correctness = totalMain > 0 ? Math.round((newMetrics.mainFound / totalMain) * 100) : 0
+
+          setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
+        } catch {
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+        }
+      }
+    } catch (err) {
+      setApiError(String(err ?? 'Unknown error'))
+      setMarkdown(orgSubmission)
+    } finally {
       setIsLoading(false)
-    }, 1)
-    return () => clearTimeout(timer)
+    }
   }, [])
   
-  // Mock data - to be replaced with backend API call
-  const documentSummary = {
-    name: "JET SUPPORT MAINTENANCE ORGANISATION EXPOSITION",
-    missingSections: 3,
-    incorrectSections: 7,
-    correctnessScore: 85,
-    aiSummary: "This maintenance organization exposition document demonstrates substantial compliance with Part 145 regulations. The organization has established comprehensive management procedures and quality control systems. However, several sections require updates to align with current EASA requirements, and three mandatory sections are missing from the current submission."
-  }
+  // documentSummary is loaded from API (see useEffect)
 
   // Helper function to get color class based on correctness score
   const getScoreColor = (score: number) => {
@@ -87,31 +121,39 @@ export function Example1() {
     return "text-red-600"
   }
   
+  useEffect(() => {
+    void load()
+  }, [])
+
   const articleRef = (element: HTMLElement | null) => {
-    if (element && !hasProcessed.current) {
+    if (!element) return
+    // Avoid re-processing highlights multiple times (prevents duplicate wrapping)
+    if (hasProcessed.current) return
+
+    // Process highlights after ReactMarkdown finishes rendering
+    setTimeout(() => {
       hasProcessed.current = true
-      // Small delay to ensure ReactMarkdown has fully rendered
-      setTimeout(() => processHighlights(element), 0)
-    }
+      processHighlights(element)
+    }, 50)
   }
 
-  const navigateToComment = (direction: 'prev' | 'next') => {
-    if (!activeComment) return
+  const navigateTowarning = (direction: 'prev' | 'next') => {
+    if (!activewarning) return
     
-    const currentIndex = textsComments.findIndex(tc => tc.id === activeComment.id)
+    const currentIndex = issues.findIndex(tc => tc.id === activewarning.id)
     let newIndex: number
     
     if (direction === 'prev') {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : textsComments.length - 1
+      newIndex = currentIndex > 0 ? currentIndex - 1 : issues.length - 1
     } else {
-      newIndex = currentIndex < textsComments.length - 1 ? currentIndex + 1 : 0
+      newIndex = currentIndex < issues.length - 1 ? currentIndex + 1 : 0
     }
     
-    const newComment = textsComments[newIndex]
-    setActiveComment(newComment)
+    const newwarning = issues[newIndex]
+    setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.submission_sections ?? [] })
     
     // Scroll to the element only if it's not in view
-    const element = document.getElementById(newComment.id)
+    const element = document.getElementById(newwarning.id)
     if (element) {
       const rect = element.getBoundingClientRect()
       const isInView = rect.top >= 0 && rect.bottom <= window.innerHeight
@@ -146,12 +188,12 @@ export function Example1() {
       nodePositions.push({ node: textNode, start, end: start + content.length })
     }
 
-    // Process each text-comment pair
-    textsComments.forEach(({ id, text: highlightText, comment, references }) => {
-      // Find the text to highlight (normalize whitespace for matching)
+    // Process each issue as a warning pair
+    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', submission_sections }) => {
+      const references = submission_sections ?? []
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
-      const normalizedHighlight = highlightText.replace(/\s+/g, ' ')
-      const normalizedIndex = normalizedCurrent.indexOf(normalizedHighlight)
+      const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
+      const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
 
       if (normalizedIndex !== -1) {
         // Map back to original text position for start
@@ -205,10 +247,10 @@ export function Example1() {
         span.style.touchAction = 'manipulation'
         span.style.userSelect = 'none'
         span.style.webkitUserSelect = 'none'
-        span.title = comment
-        span.dataset.commentId = id
-        span.dataset.commentText = highlightText
-        span.dataset.comment = comment
+        span.title = warning
+        span.dataset.warningId = id
+        span.dataset.warningText = highlightText ?? ''
+        span.dataset.warning = warning ?? ''
         span.dataset.references = JSON.stringify(references)
 
         if (affectedNodes.length === 1) {
@@ -295,19 +337,19 @@ export function Example1() {
   // Event delegation handler - use click but with optimized spans
   const handleArticleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    const commentId = target.dataset.commentId
+    const warningId = target.dataset.warningId
     
-    if (commentId) {
-      const commentText = target.dataset.commentText
-      const comment = target.dataset.comment
+    if (warningId) {
+      const warningText = target.dataset.warningText
+      const warning = target.dataset.warning
       const referencesStr = target.dataset.references
       
-      if (commentText && comment && referencesStr) {
+      if (warningText && warning && referencesStr) {
         // Direct state update
-        setActiveComment({
-          id: commentId,
-          text: commentText,
-          comment,
+        setActivewarning({
+          id: warningId,
+          text: warningText,
+          warning,
           references: JSON.parse(referencesStr)
         })
         e.stopPropagation()
@@ -316,7 +358,7 @@ export function Example1() {
   }
 
   return (
-    <div className="relative p-8" onClick={() => setActiveComment(null)}>
+    <div className="relative p-8" onClick={() => setActivewarning(null)}>
 
       {isLoading ? (
         <div className="bg-white w-full h-full flex items-center justify-center">
@@ -326,15 +368,15 @@ export function Example1() {
 
       /* Page content shown only after loading */
       <>
-      {textsComments.length > 0 && (
+      {issues.length > 0 && (
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setShowCommentsList(!showCommentsList);
+            setShowwarningsList(!showwarningsList);
           }}
           className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
           style={{ touchAction: "manipulation" }}
-          title="View all comments"
+          title="View all warnings"
         >
           <svg
             className="w-6 h-6"
@@ -349,21 +391,21 @@ export function Example1() {
               d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
             />
           </svg>
-          <span className="font-medium">{textsComments.length}</span>
+          <span className="font-medium">{issues.length}</span>
         </button>
       )}
 
-      {showCommentsList && (
+      {showwarningsList && (
         <div
           className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-40 max-h-96 overflow-y-auto backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-start mb-3">
-            <h3 className="font-semibold text-sm text-gray-900">
-              All Comments ({textsComments.length})
+              <h3 className="font-semibold text-sm text-gray-900">
+                All warnings ({issues.length})
             </h3>
             <button
-              onClick={() => setShowCommentsList(false)}
+              onClick={() => setShowwarningsList(false)}
               className="text-gray-500 hover:text-gray-800 ml-2"
               style={{ touchAction: "manipulation" }}
             >
@@ -371,12 +413,12 @@ export function Example1() {
             </button>
           </div>
           <div className="space-y-2">
-            {textsComments.slice(0, 3).map((item) => (
+            {issues.slice(0, 3).map((item) => (
               <button
                 key={item.id}
                 onClick={() => {
-                  setActiveComment(item);
-                  setShowCommentsList(false);
+                  setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.submission_sections ?? [] });
+                  setShowwarningsList(false);
                   const element = document.getElementById(item.id);
                   if (element) {
                     element.scrollIntoView({
@@ -388,10 +430,10 @@ export function Example1() {
                 className="w-full text-left p-2 hover:bg-gray-100 rounded border border-gray-300"
               >
                 <p className="text-xs text-gray-800 font-medium mb-1 line-clamp-2">
-                  {item.text}
+                  {item.submission_excerpt}
                 </p>
                 <p className="text-xs text-gray-600 line-clamp-1">
-                  {item.comment}
+                  {item.explanation}
                 </p>
               </button>
             ))}
@@ -399,30 +441,30 @@ export function Example1() {
         </div>
       )}
 
-      {activeComment && (
+      {activewarning && (
         <div
           className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-6 md:max-w-md bg-white/90 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-50 backdrop-blur-md"
           style={{ willChange: "contents" }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-sm text-gray-900">Comment</h3>
+            <h3 className="font-semibold text-sm text-gray-900">warning</h3>
             <button
-              onClick={() => setActiveComment(null)}
+              onClick={() => setActivewarning(null)}
               className="text-gray-500 hover:text-gray-800 ml-2"
               style={{ touchAction: "manipulation" }}
             >
               ✕
             </button>
           </div>
-          <p className="text-sm text-gray-800 mb-3">{activeComment.comment}</p>
-          {activeComment.references && activeComment.references.length > 0 && (
+          <p className="text-sm text-gray-800 mb-3">{activewarning.warning}</p>
+          {activewarning.references && activewarning.references.length > 0 && (
             <div className="mb-3">
               <h4 className="font-semibold text-xs text-gray-900 mb-1">
                 References
               </h4>
               <ul className="text-xs text-gray-700 space-y-1">
-                {activeComment.references.map((ref, index) => (
+                {activewarning.references.map((ref, index) => (
                   <li key={index} className="pl-2 border-l-2 border-gray-500">
                     {ref}
                   </li>
@@ -432,10 +474,10 @@ export function Example1() {
           )}
           <div className="flex items-center justify-between pt-3 border-t border-gray-300">
             <button
-              onClick={() => navigateToComment("prev")}
+              onClick={() => navigateTowarning("prev")}
               className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
               style={{ touchAction: "manipulation" }}
-              title="Previous comment"
+              title="Previous warning"
             >
               <svg
                 className="w-4 h-4"
@@ -453,14 +495,14 @@ export function Example1() {
               Previous
             </button>
             <span className="text-xs text-gray-600">
-              {textsComments.findIndex((tc) => tc.id === activeComment.id) + 1}{" "}
-              / {textsComments.length}
+              {issues.findIndex((tc) => tc.id === activewarning.id) + 1} {" "}
+              / {issues.length}
             </span>
             <button
-              onClick={() => navigateToComment("next")}
+              onClick={() => navigateTowarning("next")}
               className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
               style={{ touchAction: "manipulation" }}
-              title="Next comment"
+              title="Next warning"
             >
               Next
               <svg
@@ -506,31 +548,29 @@ export function Example1() {
             <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
               <span
                 className={`text-2xl font-bold leading-none ${getScoreColor(
-                  documentSummary.correctnessScore
+                  documentSummary.correctnessScore ?? 0
                 )}`}
               >
-                {documentSummary.correctnessScore}%
+                {documentSummary.correctnessScore ?? 0}%
               </span>
               <span className="text-lg leading-none">Correctness Score</span>
             </div>
 
             <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
               <span className="text-2xl font-bold text-orange-600 leading-none">
-                {documentSummary.missingSections}
+                {metricsCounts.mainNotFound ?? 0}
               </span>
               <span className="text-lg leading-none">Missing Sections</span>
             </div>
 
             <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
               <span className="text-2xl font-bold text-amber-600 leading-none">
-                {documentSummary.incorrectSections}
+                {issues.length ?? 0}
               </span>
               <span className="text-lg leading-none">Incorrect Sections</span>
             </div>
           </div>
 
-          {/* Separator */}
-          <div className="border-t border-slate-300 my-6"></div>
         </div>
 
         <article
