@@ -473,7 +473,6 @@ export function Example1() {
           </div>
         </div>
       )}
-<<<<<<< Updated upstream
 
       <div className="max-w-4xl mx-auto md:pt-4">
         {/* Summary Section */}
@@ -532,23 +531,7 @@ export function Example1() {
           className="prose max-w-none"
           onClick={handleArticleClick}
         >
-          {useMemo(
-            () => (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-              >
-                {orgSubmission}
-              </ReactMarkdown>
-            ),
-            []
-          )}
-=======
-      
-      <div className="max-w-4xl mx-auto">
-        <article ref={articleRef} className="prose max-w-none" onClick={handleArticleClick}>
           {markdownContent}
->>>>>>> Stashed changes
         </article>
       </div>
       </>
