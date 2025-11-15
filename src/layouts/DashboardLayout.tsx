@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Home, Upload, FileText, Search, PanelLeftClose, PanelRightClose, User, Menu, BookOpen } from "lucide-react"
+import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen } from "lucide-react"
+import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -69,7 +70,7 @@ export function DashboardLayout() {
                   title="Go to home"
                   aria-label="Go to home"
                 >
-                  <img src={logoPng} alt="Logo" className="h-6 w-6 object-contain" />
+                  <img src={logoPng} alt="Logo" className="h-4 w-4 object-contain" />
                 </button>
               )}
               {!isCollapsed && (
@@ -118,25 +119,11 @@ export function DashboardLayout() {
 
           {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden px-3 py-3 space-y-1">
-            <Link to="/dashboard" title="Home" onClick={handleNavClick}>
+            <Link to="/dashboard" title="Upload Document" onClick={handleNavClick}>
               <div
                 className={cn(
                   "pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm",
                   isActive("/dashboard")
-                    ? "bg-[hsl(var(--sidebar-active))]"
-                    : "hover:bg-[hsl(var(--sidebar-hover))]"
-                )}
-              >
-                <Home className="h-4 w-4 flex-shrink-0" />
-                {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Home</span>}
-              </div>
-            </Link>
-            
-            <Link to="/dashboard/upload" title="Upload Document" onClick={handleNavClick}>
-              <div
-                className={cn(
-                  "pl-3 pr-3 py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center gap-3 rounded-sm",
-                  isActive("/dashboard/upload")
                     ? "bg-[hsl(var(--sidebar-active))]"
                     : "hover:bg-[hsl(var(--sidebar-hover))]"
                 )}
@@ -263,7 +250,13 @@ export function DashboardLayout() {
       </aside>
 
           {/* Main Content */}
-          <main className="flex-1 overflow-auto bg-background">
+          <main 
+            className="flex-1 overflow-auto bg-background"
+            style={{
+              backgroundImage: 'radial-gradient(circle, rgba(209, 213, 219, 0.1) 2px, transparent 1px)',
+              backgroundSize: '15px 15px'
+            }}
+          >
             {/* Mobile Header */}
             <div 
               className="md:hidden sticky top-0 z-30 border-b border-slate-300"

@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { MainLayout } from "@/layouts/MainLayout"
 import { LandingPage } from "@/pages/LandingPage"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
-import { Home } from "@/pages/dashboard/Home"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
 import { Example1 } from "@/pages/Example1"
@@ -16,8 +15,7 @@ function App() {
         
         {/* Dashboard Routes */}
         <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<Home />} />
-          <Route path="upload" element={<Upload />} />
+          <Route index element={<Upload />} />
           <Route path="document/:id" element={<DocumentView />} />
           <Route path="example-1" element={<Example1 />} />
         </Route>
