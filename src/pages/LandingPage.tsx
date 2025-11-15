@@ -46,13 +46,13 @@ export function LandingPage() {
       </div>
 
       {/* CheckMate Image - Right Side - Hidden on mobile */}
-      <div className="hidden md:block absolute right-0 top-1/2 -translate-y-3/9 w-[60%] max-w-none pointer-events-none z-0">
+      <div className="hidden md:block absolute right-0 bottom-0 translate-y-[15%] w-[60%] max-w-none pointer-events-none z-0">
         <img src={checkMateImg} alt="CheckMate Documentation" className="w-full h-auto" />
       </div>
 
-      <div className="w-full max-w-xl relative z-10">
+      <div className="w-full max-w-xl relative z-10 pl-4 md:pl-12 my-auto pb-4">
         {/* Title and Subtitle */}
-        <div className="space-y-2 my-6">
+        <div className="space-y-2 mb-6">
           <div className="w-64 sm:w-80 md:w-96">
             <Logo />
           </div>
