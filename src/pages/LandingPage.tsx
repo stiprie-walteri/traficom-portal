@@ -23,7 +23,7 @@ export function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="relative flex min-h-screen items-center bg-white px-8 md:px-16 lg:px-24 overflow-hidden" style={{
+    <div className="relative flex min-h-screen items-center bg-white px-4 sm:px-8 md:px-16 lg:px-24 overflow-hidden" style={{
       backgroundImage: 'radial-gradient(circle, rgba(209, 213, 219, 0.1) 2px, transparent 1px)',
       backgroundSize: '15px 15px'
     }}>
@@ -45,43 +45,43 @@ export function LandingPage() {
         ))}
       </div>
 
-      {/* CheckMate Image - Right Side */}
-      <div className="absolute right-0 top-1/2 -translate-y-3/9 w-[60%] max-w-none pointer-events-none z-0">
+      {/* CheckMate Image - Right Side - Hidden on mobile */}
+      <div className="hidden md:block absolute right-0 top-1/2 -translate-y-3/9 w-[60%] max-w-none pointer-events-none z-0">
         <img src={checkMateImg} alt="CheckMate Documentation" className="w-full h-auto" />
       </div>
 
-      <div className="w-full max-w-xl space-y-8 relative z-10">
+      <div className="w-full max-w-xl space-y-6 sm:space-y-8 relative z-10">
         {/* Logo */}
         <div>
           <Logo />
         </div>
 
         {/* Title and Subtitle */}
-        <div className="space-y-4">
-          <h1 className="text-6xl font-bold text-black">
+        <div className="space-y-3 sm:space-y-4">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-black">
             CheckMate
           </h1>
-          <p className="text-2xl text-gray-700">
+          <p className="text-lg sm:text-xl md:text-2xl text-gray-700">
             Audits that <span className="italic">start clean, stay clean.</span>        
           </p>
         </div>
 
         {/* Login Buttons */}
-        <div className="flex flex-col gap-4 max-w-xs">
+        <div className="flex flex-col gap-3 sm:gap-4 max-w-xs">
           <Button 
-            className="h-14 text-base bg-black hover:bg-gray-800 text-white justify-start"
+            className="h-12 sm:h-14 text-sm sm:text-base bg-black hover:bg-gray-800 text-white justify-start"
             onClick={() => navigate('/dashboard')}
           >
-          <FileStack className="mr-2 h-5 w-5" />
+          <FileStack className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
             See in action
           </Button>
           
           <Button 
             variant="outline" 
-            className="h-14 text-base border-2 border-black text-black hover:bg-gray-100 justify-start"
+            className="h-12 sm:h-14 text-sm sm:text-base border-2 border-black text-black hover:bg-gray-100 justify-start"
             onClick={() => navigate('/dashboard')}
           >
-            <FileUp className="mr-2 h-5 w-5" />
+            <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
             Test upload
           </Button>
         </div>
