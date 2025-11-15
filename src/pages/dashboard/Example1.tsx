@@ -60,7 +60,7 @@ export function Example1() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false)
-    }, 10000)
+    }, 1)
     return () => clearTimeout(timer)
   }, [])
   
@@ -325,7 +325,7 @@ export function Example1() {
             e.stopPropagation();
             setShowCommentsList(!showCommentsList);
           }}
-          className="fixed top-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
+          className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
           style={{ touchAction: "manipulation" }}
           title="View all comments"
         >
@@ -348,7 +348,7 @@ export function Example1() {
 
       {showCommentsList && (
         <div
-          className="fixed top-24 right-6 bg-white border border-gray-400 rounded shadow-lg p-4 max-w-sm z-40 max-h-96 overflow-y-auto"
+          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-40 max-h-96 overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-start mb-3">
@@ -394,7 +394,7 @@ export function Example1() {
 
       {activeComment && (
         <div
-          className="fixed top-4 right-4 bg-white border border-gray-400 rounded shadow-lg p-4 max-w-md z-50"
+          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-6 md:max-w-md bg-white border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-50"
           style={{ willChange: "contents" }}
           onClick={(e) => e.stopPropagation()}
         >
