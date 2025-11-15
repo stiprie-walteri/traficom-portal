@@ -36,31 +36,11 @@ export interface DashboardStats {
 // Mock documents for sidebar
 export const mockDocuments: Document[] = [
   {
-    id: "1",
-    title: "Safety Regulation 2024-01",
-    uploadDate: "2024-11-10",
+    id: "5",
+    title: "Jet Support Maintinence",
+    uploadDate: "2024-11-15",
     status: "analyzed",
-    complianceScore: 87,
-  },
-  {
-    id: "2",
-    title: "Transport Guidelines Q3",
-    uploadDate: "2024-11-12",
-    status: "analyzed",
-    complianceScore: 92,
-  },
-  {
-    id: "3",
-    title: "Vehicle Standards Document",
-    uploadDate: "2024-11-13",
-    status: "analyzed",
-    complianceScore: 78,
-  },
-  {
-    id: "4",
-    title: "Environmental Compliance",
-    uploadDate: "2024-11-14",
-    status: "analyzing",
+    complianceScore: 83,
   },
 ]
 

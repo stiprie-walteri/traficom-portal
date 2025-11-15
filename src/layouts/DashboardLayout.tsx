@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, User, Menu, BookOpen } from "lucide-react"
+import { Upload, FileText, Search, PanelLeftClose, User, Menu } from "lucide-react"
 import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -124,21 +124,6 @@ export function DashboardLayout() {
               >
                 <Upload className="h-4 w-4 flex-shrink-0" />
                 {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Upload Document</span>}
-              </div>
-            </Link>
-
-            <Link to="/dashboard/example-1" title="Example Document" onClick={handleNavClick}>
-              <div
-                className={cn(
-                  "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
-                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
-                  isActive("/dashboard/example-1")
-                    ? "bg-[hsl(var(--sidebar-active))]"
-                    : "hover:bg-[hsl(var(--sidebar-hover))]"
-                )}
-              >
-                <BookOpen className="h-4 w-4 flex-shrink-0" />
-                {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Example Document</span>}
               </div>
             </Link>
 
