@@ -60,7 +60,7 @@ export function Example1() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false)
-    }, 100000)
+    }, 10000)
     return () => clearTimeout(timer)
   }, [])
   
