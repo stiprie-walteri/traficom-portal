@@ -1,8 +1,9 @@
-import { useRef, useState, useMemo } from "react"
+import { useRef, useState, useMemo, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
+import { ChessLoader } from "@/components/ChessLoader"
 
 const textsComments=[
   {
@@ -44,7 +45,24 @@ const textsComments=[
 export function Example1() {
   const [activeComment, setActiveComment] = useState<{ id: string; text: string; comment: string; references: string[] } | null>(null)
   const [showCommentsList, setShowCommentsList] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const hasProcessed = useRef(false)
+
+  const markdownContent = useMemo(() => (
+    <ReactMarkdown 
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
+    >
+      {orgSubmission}
+    </ReactMarkdown>
+  ), [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false)
+    }, 100000)
+    return () => clearTimeout(timer)
+  }, [])
   
   // Mock data - to be replaced with backend API call
   const documentSummary = {
@@ -291,7 +309,16 @@ export function Example1() {
   }
 
   return (
-    <div className="p-8" onClick={() => setActiveComment(null)}>
+    <div className="relative p-8" onClick={() => setActiveComment(null)}>
+
+      {isLoading ? (
+        <div className="bg-white w-full h-full flex items-center justify-center">
+          <ChessLoader duration={180} />
+        </div>
+      ) : (
+
+      /* Page content shown only after loading */
+      <>
       {textsComments.length > 0 && (
         <button
           onClick={(e) => {
@@ -446,6 +473,7 @@ export function Example1() {
           </div>
         </div>
       )}
+<<<<<<< Updated upstream
 
       <div className="max-w-4xl mx-auto md:pt-4">
         {/* Summary Section */}
@@ -515,8 +543,16 @@ export function Example1() {
             ),
             []
           )}
+=======
+      
+      <div className="max-w-4xl mx-auto">
+        <article ref={articleRef} className="prose max-w-none" onClick={handleArticleClick}>
+          {markdownContent}
+>>>>>>> Stashed changes
         </article>
       </div>
+      </>
+      )}
     </div>
   );
 }
