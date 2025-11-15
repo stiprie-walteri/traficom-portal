@@ -635,11 +635,13 @@ export function RealResults() {
           </div>
 
           {metricsCounts.mainNotFoundList.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Missing Sections</h3>
+            <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
+              <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
               <div className="flex flex-wrap gap-2">
                 {metricsCounts.mainNotFoundList.map((section, index) => (
-                  <Badge key={index} variant="destructive" className="rounded-none">{section}</Badge>
+                  <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                    {section}
+                  </Badge>
                 ))}
               </div>
             </div>
