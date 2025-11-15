@@ -151,7 +151,7 @@ export function Upload() {
                 </p>
                 <p className="text-xs text-muted-foreground mt-3 flex items-center gap-2 justify-center">
                   <FileText className="h-3 w-3" />
-                  PDF, DOC, DOCX • Max 50MB
+                  PDF • Max 50MB
                 </p>
               </div>
               <input
@@ -257,7 +257,7 @@ export function Upload() {
           <div className="text-center">
             <button
               onClick={() => setIsLearnMoreOpen(!isLearnMoreOpen)}
-              className="inline-flex items-center gap-1.5 text-xs font-light text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-light text-gray-500 hover:text-slate-60transition-colors"
             >
               Learn more
               {isLearnMoreOpen ? (
@@ -268,19 +268,11 @@ export function Upload() {
             </button>
             
             {isLearnMoreOpen && (
-              <Card className="my-6">
+              <Card className="my-6 backdrop-blur-sm text-gray-500">
                 <CardContent className="pt-6 space-y-3 text-left">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Checkmate is an AI-powered compliance analysis tool that helps telecom operators ensure their regulatory documentation meets Traficom standards. Our system performs comprehensive analysis of your documents to identify potential compliance gaps, regulatory violations, and areas requiring attention.
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    <strong className="text-foreground">What we analyze:</strong> Security policies, data protection frameworks, operational procedures, incident response plans, and technical documentation against current Finnish telecommunications regulations.
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    <strong className="text-foreground">How it works:</strong> Upload your document in PDF, DOC, or DOCX format. Our AI engine will parse the content, cross-reference it with Traficom's regulatory requirements, and generate a detailed compliance report with actionable recommendations within minutes.
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    All documents are processed securely and remain confidential. Results include a compliance score, specific violations or gaps identified, and suggestions for remediation.
+                  <p className="text-sm">
+                    Checkmate is the latest solution in RegTech space, saving time and resources for any type of autitors and their clients. Where traditional options would take weeks, CheckMake manages to deliver the same result in days, saving tens of thousands of human hours and hundreads of thousands of euros in costs.
+                    Our solution provides compliance with the latest regulations and standards as well as security, combining AI and traditional IT solutions
                   </p>
                 </CardContent>
               </Card>
