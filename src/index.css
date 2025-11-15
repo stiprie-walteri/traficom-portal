@@ -1,36 +1,85 @@
 @import "tailwindcss";
 
+/*
+  THEME CUSTOMIZATION GUIDE
+  =========================
+  To customize the theme, modify the CSS variables below.
+  Values are in HSL format: "hue saturation% lightness%"
+  
+  Example color changes:
+  - Blue theme: --primary: 217 91% 60%
+  - Green theme: --primary: 142 76% 36%
+  - Purple theme: --primary: 262 83% 58%
+  
+  Key variables to customize:
+  - --background: Main background color
+  - --sidebar-bg: Sidebar background (custom variable)
+  - --primary: Primary action color (buttons, links)
+  - --accent: Hover states and highlights
+  - --muted: Subtle backgrounds
+*/
+
 @layer base {
   :root {
+    /* Main backgrounds */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+    
+    /* Sidebar - Custom variable for easy theming */
+    --sidebar-bg: 0 0% 98%;
+    --sidebar-hover: 0 0% 96%;
+    --sidebar-active: 210 40% 96.1%;
+    
+    /* Cards - Minimal/no borders by default */
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
+    
+    /* Popovers */
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
+    
+    /* Primary colors */
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
+    
+    /* Secondary colors */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
+    
+    /* Muted backgrounds */
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
+    
+    /* Accent/hover states */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
+    
+    /* Destructive/error states */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    
+    /* Borders - kept for minimal use */
+    --border: 214.4 31.8% 85.1%;
+    --input: 214.4 31.8% 85.1%;
     --ring: 222.2 84% 4.9%;
+    
+    /* Chart colors */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0rem
+    
+    /* Border radius - Very slight rounding for softer edges */
+    --radius: 0.25rem;
   }
+  
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
+    --sidebar-bg: 217.2 32.6% 17.5%;
+    --sidebar-hover: 217.2 32.6% 20%;
+    --sidebar-active: 217.2 32.6% 22%;
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
@@ -45,21 +94,18 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 214.4 31.8% 85.1%;
+    --input: 214.4 31.8% 85.1%;
     --ring: 212.7 26.8% 83.9%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%
+    --chart-5: 340 75% 55%;
   }
 }
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
