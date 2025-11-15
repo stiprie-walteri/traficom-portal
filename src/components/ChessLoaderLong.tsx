@@ -1,4 +1,4 @@
-export function ChessLoader({ duration = 3 }: { duration?: number }) {
+export function ChessLoaderLong({ duration = 1200000 }: { duration?: number }) {
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] w-full">
       <div className="flex flex-col items-center gap-6">
@@ -29,7 +29,7 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
             }}
           />
         </div>
-        <p className="text-sm text-gray-600">This may take a while...</p>
+        <p className="text-sm text-gray-600">This may take up to 20 minutes...</p>
       </div>
       </div>
       
@@ -91,8 +91,4 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
       `}</style>
     </div>
   )
-}
-
-export function ChessLoaderLong() {
-  return <ChessLoader duration={10} />
 }

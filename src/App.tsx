@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
 import { Example1 } from "@/pages/dashboard/Example1"
+import { RealResults } from "@/pages/dashboard/RealResults"
 
 // Route wrapper to handle document 5 specially
 function DocumentRouter() {
@@ -25,7 +26,9 @@ function App() {
         {/* Dashboard Routes */}
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Upload />} />
-          <Route path="document/:id" element={<DocumentRouter />} />
+          <Route path="document/:id" element={<DocumentView />} />
+          <Route path="example-1" element={<Example1 />} />
+          <Route path="real-results" element={<RealResults />} />
         </Route>
 
         {/* Catch all */}
