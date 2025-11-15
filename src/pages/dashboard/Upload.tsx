@@ -219,7 +219,7 @@ export function Upload() {
             <div className="text-center">
               <button
                 onClick={() => setIsLearnMoreOpen(!isLearnMoreOpen)}
-                className="inline-flex items-center gap-1.5 text-xs font-light text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs font-light text-gray-500 hover:text-gray-600 transition-colors"
               >
                 Learn more
                 {isLearnMoreOpen ? (
@@ -230,21 +230,15 @@ export function Upload() {
               </button>
               
               {isLearnMoreOpen && (
-                <Card className="my-6">
-                  <CardContent className="pt-6 space-y-3 text-left">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Checkmate is an AI-powered compliance analysis tool that helps telecom operators ensure their regulatory documentation meets Traficom standards. Our system performs comprehensive analysis of your documents to identify potential compliance gaps, regulatory violations, and areas requiring attention.
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      <strong className="text-foreground">What we analyze:</strong> Security policies, data protection frameworks, operational procedures, incident response plans, and technical documentation against current Finnish telecommunications regulations.
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      <strong className="text-foreground">How it works:</strong> Upload your document in PDF, DOC, or DOCX format. Our AI engine will parse the content, cross-reference it with Traficom's regulatory requirements, and generate a detailed compliance report with actionable recommendations within minutes.
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      All documents are processed securely and remain confidential. Results include a compliance score, specific violations or gaps identified, and suggestions for remediation.
-                    </p>
-                  </CardContent>
+                <Card className="my-6 max-h-[65vh] overflow-hidden text-sm text-gray-500 backdrop-blur-sm">
+                   <CardContent className="pt-6 space-y-3 text-left overflow-y-auto max-h-[55vh] pr-4">
+                     <p>
+                       Checkmate is the latest in RegTech solutions, combining the best of AI and traditional IT to revolutionize regulatory compliance. We save companies tens of thousands of hours and hundreds of thousands of euros.
+                     </p>
+                     <p>
+                       Upload your document and our hybrid AI engine analyzes it, generating actionable compliance reports in minutes.
+                     </p>
+                   </CardContent>
                 </Card>
               )}
             </div>
