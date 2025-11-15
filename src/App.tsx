@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
 import { Example1 } from "@/pages/dashboard/Example1"
+import { RealResults } from "@/pages/dashboard/RealResults"
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route index element={<Upload />} />
           <Route path="document/:id" element={<DocumentView />} />
           <Route path="example-1" element={<Example1 />} />
+          <Route path="real-results" element={<RealResults />} />
         </Route>
 
         {/* Catch all */}
