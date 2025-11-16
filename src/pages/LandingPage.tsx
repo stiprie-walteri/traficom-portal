@@ -23,9 +23,11 @@ export function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="relative flex min-h-screen items-center bg-white px-4 sm:px-8 md:px-16 lg:px-24 overflow-hidden" style={{
+    <div className="relative flex min-h-screen items-center bg-white overflow-hidden" style={{
       backgroundImage: 'radial-gradient(circle, rgba(209, 213, 219, 0.1) 2px, transparent 1px)',
-      backgroundSize: '15px 15px'
+      backgroundSize: '15px 15px',
+      paddingTop: '80px',
+      paddingBottom: '120px'
     }}>
 
       <div className="absolute inset-0 pointer-events-none z-0">
@@ -45,40 +47,54 @@ export function LandingPage() {
         ))}
       </div>
 
-      {/* CheckMate Image - Right Side - Hidden on mobile */}
-      <div className="hidden md:block absolute right-0 bottom-0 translate-y-[15%] w-[60%] max-w-none pointer-events-none z-0">
-        <img src={checkMateImg} alt="CheckMate Documentation" className="w-full h-auto" />
-      </div>
+      {/* Two-column hero layout */}
+      <div className="w-full relative z-10" style={{ paddingLeft: '10%', paddingRight: '4%' }}>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start max-w-7xl mx-auto">
+          {/* Left Column - 40-45% width */}
+          <div className="md:col-span-5 relative z-10">
+            {/* Logo at top-left */}
+            <div className="w-64 sm:w-80 md:w-96 mb-8">
+              <Logo />
+            </div>
 
-      <div className="w-full max-w-xl relative z-10 pl-4 md:pl-12 my-auto pb-4">
-        {/* Title and Subtitle */}
-        <div className="space-y-2 mb-6">
-          <div className="w-64 sm:w-80 md:w-96">
-            <Logo />
+            {/* Headline - 32px gap after logo */}
+            <h1 className="text-2xl sm:text-3xl md:text-3xl text-gray-700 font-['Courier_New',monospace] font-bold mb-4">
+              Consider it Checked!
+            </h1>
+
+            {/* Sub-headline - 16px gap after headline */}
+            <p className="text-base sm:text-lg text-gray-600 mb-6">
+              {/* Add sub-headline text here if needed */}
+            </p>
+
+            {/* CTA Buttons - 24px gap before buttons */}
+            <div className="flex flex-col gap-3 sm:gap-4 max-w-sm">
+              <Button 
+                className="h-12 sm:h-14 text-sm sm:text-base bg-yellow-400 hover:bg-yellow-500 text-black justify-start"
+                onClick={() => navigate('/dashboard/example-1')}
+              >
+                <FileStack className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                See in action
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
+                onClick={() => navigate('/dashboard')}
+              >
+                <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                Test upload
+              </Button>
+            </div>
           </div>
-          <p className="text-2xl text-gray-700 font-['Courier_New',monospace] font-bold pl-2">
-            Consider it Checked!        
-          </p>
-        </div>
 
-        {/* Login Buttons */}
-        <div className="flex flex-col gap-3 sm:gap-4 max-w-xs">
-          <Button 
-            className="h-12 sm:h-14 text-sm sm:text-base bg-black hover:bg-gray-800 text-white justify-start"
-            onClick={() => navigate('/dashboard/example-1')}
-          >
-          <FileStack className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-            See in action
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            className="h-12 sm:h-14 text-sm sm:text-base border-2 border-black text-black hover:bg-gray-100 justify-start"
-            onClick={() => navigate('/dashboard')}
-          >
-            <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-            Test upload
-          </Button>
+          {/* Right Column - 55-60% width */}
+          <div className="hidden md:block md:col-span-7 relative z-0">
+            {/* CheckMate Image - Anchored to right, aligned with logo top */}
+            <div className="absolute right-0 pointer-events-none" style={{ width: '110%', top: '-100px' }}>
+              <img src={checkMateImg} alt="CheckMate Documentation" className="w-full h-auto" />
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -4,12 +4,33 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
+import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
+import { storeAnalysisResult, updateDocumentWithResults, setDocumentAnalyzing, hasAnalysisResult, mockDocuments } from "@/lib/mockData"
+
+const severityHighlightClasses: Record<string, string> = {
+  error: "bg-red-300 hover:bg-red-400",
+  warning: "bg-amber-200 hover:bg-amber-300",
+  info: "bg-sky-100 hover:bg-sky-200",
+}
+
+const getHighlightClassBySeverity = (severity?: string) => {
+  const normalized = severity?.toLowerCase()
+  const severityClasses = normalized && severityHighlightClasses[normalized] ? severityHighlightClasses[normalized] : "bg-yellow-200 hover:bg-yellow-300"
+  return `cursor-pointer relative ${severityClasses}`
+}
+
+const getSeverityLabel = (severity?: string) => {
+  const normalized = severity?.toLowerCase()
+  if (normalized === "error") return "Error"
+  if (normalized === "info") return "Info"
+  return "Warning"
+}
 
 // warnings and highlights are provided by the backend `issues` list
 
 export function Example1() {
-  const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
+  const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[]; severity?: string } | null>(null)
   const [showwarningsList, setShowwarningsList] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [, setApiError] = useState<string | null>(null)
@@ -30,7 +51,8 @@ export function Example1() {
     subsectionsFound: number;
     subsectionsNotFound: number;
     sectionsNotInLegislation: number;
-  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+    mainNotFoundList: string[];
+  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
   const hasProcessed = useRef(false)
 
   const markdownContent = useMemo(() => (
@@ -40,8 +62,14 @@ export function Example1() {
       components={{
         table: ({ ...props}) => (
           <div className="table-wrapper">
-            <table {...props} />
+            <table {...props} className="rounded-sm" />
           </div>
+        ),
+        pre: ({ ...props}) => (
+          <pre {...props} className="rounded-sm" />
+        ),
+        code: ({ ...props}) => (
+          <code {...props} className="rounded-sm" />
         ),
       }}
     >
@@ -53,6 +81,15 @@ export function Example1() {
   const load = useCallback(async () => {
     setIsLoading(true)
     setApiError(null)
+    
+    const documentId = "5"
+    
+    // Only set to analyzing if document hasn't been analyzed yet
+    const doc = mockDocuments.find(d => d.id === documentId)
+    if (doc && doc.status !== "analyzed" && !hasAnalysisResult(documentId)) {
+      setDocumentAnalyzing(documentId)
+    }
+    
     try {
       // Always send a fake file object in the request body for testing
 
@@ -91,6 +128,7 @@ export function Example1() {
             subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
             subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
             sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+            mainNotFoundList: Array.isArray(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) ? (m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) as string[] : [],
           }
 
           setMetricsCounts(newMetrics)
@@ -100,8 +138,15 @@ export function Example1() {
           const correctness = totalMain > 0 ? Math.round((newMetrics.mainFound / totalMain) * 100) : 0
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
+
+          // Store the analysis result for document "5" and update its score
+          storeAnalysisResult(documentId, {
+            parseResult: res,
+            filename: "Jet Support Maintinence"
+          })
+          updateDocumentWithResults(documentId, res)
         } catch {
-          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
       }
     } catch (err) {
@@ -116,8 +161,9 @@ export function Example1() {
 
   // Helper function to get color class based on correctness score
   const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-green-600"
-    if (score >= 75) return "text-yellow-600"
+    if (score >= 90) return "text-blue-600"
+    if (score >= 80) return "text-green-600"
+    if (score >= 60) return "text-yellow-600"
     return "text-red-600"
   }
   
@@ -150,7 +196,13 @@ export function Example1() {
     }
     
     const newwarning = issues[newIndex]
-    setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.main_code ? [newwarning.main_code] : [] })
+    setActivewarning({
+      id: newwarning.id,
+      text: newwarning.submission_excerpt ?? '',
+      warning: newwarning.explanation ?? '',
+      references: newwarning.main_code ? [newwarning.main_code] : [],
+      severity: newwarning.severity ?? 'warning',
+    })
     
     // Scroll to the element only if it's not in view
     const element = document.getElementById(newwarning.id)
@@ -191,8 +243,9 @@ export function Example1() {
     // Process each issue as a warning pair
     let matchedIds: string[] = []
     let unmatchedIds: string[] = []
-    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
+    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code, severity }) => {
       const references = main_code ? [main_code] : []
+      const highlightClass = getHighlightClassBySeverity(severity)
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
       const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
       const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
@@ -245,7 +298,7 @@ export function Example1() {
         // Create wrapper span
         const span = document.createElement('span')
         span.id = id
-        span.className = 'bg-yellow-200 hover:bg-yellow-300 cursor-pointer px-1 rounded relative'
+        span.className = highlightClass
         span.style.willChange = 'background-color'
         span.style.touchAction = 'manipulation'
         span.style.userSelect = 'none'
@@ -255,6 +308,7 @@ export function Example1() {
         span.dataset.warningText = highlightText ?? ''
         span.dataset.warning = warning ?? ''
         span.dataset.references = JSON.stringify(references)
+        span.dataset.severity = severity ?? "warning"
 
         if (affectedNodes.length === 1) {
           // Single node case
@@ -361,7 +415,8 @@ export function Example1() {
           id: warningId,
           text: warningText,
           warning,
-          references: JSON.parse(referencesStr)
+          references: JSON.parse(referencesStr),
+          severity: target.dataset.severity ?? "warning",
         })
         e.stopPropagation()
       }
@@ -384,9 +439,9 @@ export function Example1() {
             e.stopPropagation();
             setShowwarningsList(!showwarningsList);
           }}
-          className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
+          className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-30 flex items-center gap-2"
           style={{ touchAction: "manipulation" }}
-          title="View all warnings"
+          title="View all comments"
         >
           <svg
             className="w-6 h-6"
@@ -407,12 +462,12 @@ export function Example1() {
 
       {showwarningsList && (
         <div
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-40 max-h-96 overflow-y-auto backdrop-blur-sm"
+          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-30 backdrop-blur-sm flex flex-col h-[280px]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-between items-start mb-3">
+          <div className="flex justify-between items-start mb-3 flex-shrink-0">
               <h3 className="font-semibold text-sm text-gray-900">
-                All warnings ({issues.length})
+                All comments ({issues.length})
             </h3>
             <button
               onClick={() => setShowwarningsList(false)}
@@ -422,12 +477,18 @@ export function Example1() {
               ✕
             </button>
           </div>
-          <div className="space-y-2">
-            {issues.slice(0, 3).map((item) => (
+          <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
+            {issues.map((item) => (
               <button
                 key={item.id}
                 onClick={() => {
-                  setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.main_code ? [item.main_code] : [] });
+                  setActivewarning({
+                    id: item.id,
+                    text: item.submission_excerpt ?? '',
+                    warning: item.explanation ?? '',
+                    references: item.main_code ? [item.main_code] : [],
+                    severity: item.severity ?? 'warning',
+                  });
                   setShowwarningsList(false);
                   const element = document.getElementById(item.id);
                   if (element) {
@@ -458,7 +519,9 @@ export function Example1() {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-sm text-gray-900">Warning</h3>
+            <h3 className="font-semibold text-sm text-gray-900">
+              {getSeverityLabel(activewarning?.severity)}
+            </h3>
             <button
               onClick={() => setActivewarning(null)}
               className="text-gray-500 hover:text-gray-800 ml-2"
@@ -580,6 +643,20 @@ export function Example1() {
               <span className="text-lg leading-none">Incorrect Sections</span>
             </div>
           </div>
+
+          {metricsCounts.mainNotFoundList.length > 0 && (
+            <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
+              <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
+              <div className="flex flex-wrap gap-2">
+                {metricsCounts.mainNotFoundList.map((section, index) => (
+                  <Badge key={index} variant="destructive" className="rounded-sm bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                    {section}
+                  </Badge>
+                ))}
+              </div>
+              
+            </div>
+          )}
 
           <div className="border-t border-slate-300 my-6"></div>
 

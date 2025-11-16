@@ -6,6 +6,7 @@ import { Upload as UploadIcon, File, X, CheckCircle2, FileText, ChevronDown, Che
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { cn } from "@/lib/utils"
 import documentService from "@/lib/documentService"
+import { addDocument, generateDocumentId, storeAnalysisResult, updateDocumentWithResults, mockDocuments } from "@/lib/mockData"
 
 export function Upload() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -67,16 +68,59 @@ export function Upload() {
 
     setIsAnalyzing(true)
 
+    // Store file reference before clearing
+    const fileToAnalyze = selectedFile
+    const fileName = selectedFile.name
+
+    // Generate a unique ID for the new document
+    const newDocId = generateDocumentId()
+    
+    // Remove file extension from filename for cleaner title
+    const fileTitle = fileName.replace(/\.[^/.]+$/, "")
+    
+    // Add the new document to the sidebar
+    addDocument({
+      id: newDocId,
+      title: fileTitle,
+      uploadDate: new Date().toISOString().split('T')[0], // Use current date
+      status: "analyzing",
+      complianceScore: undefined, // This will show as "-%"
+    })
+
+    // Trigger sidebar update
+    window.dispatchEvent(new Event('documentListUpdated'))
+
+    // Clear the form immediately so user can upload another file
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+
     try {
       // Call the real parseReal API
-      const result = await documentService.parseReal(selectedFile)
+      const result = await documentService.parseReal(fileToAnalyze)
       
-      // Navigate to RealResults with the parsed data
-      navigate("/dashboard/real-results", { state: { parseResult: result, filename: selectedFile.name } })
+      // Store the analysis result with the document ID
+      storeAnalysisResult(newDocId, {
+        parseResult: result,
+        filename: fileName
+      })
+      
+      // Update document with calculated correctness score
+      updateDocumentWithResults(newDocId, result)
+      
+      // Navigate to the document view with the real data
+      navigate(`/dashboard/document/${newDocId}`)
     } catch (error) {
       console.error("Error parsing document:", error)
-      alert("Failed to analyze document. Please try again.")
+      alert(`Failed to analyze document "${fileName}". Please try again.`)
       setIsAnalyzing(false)
+      // Update document status on error
+      const doc = mockDocuments.find(d => d.id === newDocId)
+      if (doc) {
+        doc.status = "analyzed" // Mark as analyzed even on error
+        window.dispatchEvent(new Event('documentListUpdated'))
+      }
     }
   }
 
@@ -142,7 +186,7 @@ export function Upload() {
                   </p>
                   <p className="text-xs text-muted-foreground mt-3 flex items-center gap-2 justify-center">
                     <FileText className="h-3 w-3" />
-                    PDF, DOC, DOCX • Max 50MB
+                    PDF • Max 50MB
                   </p>
                 </div>
                 <input
@@ -157,7 +201,10 @@ export function Upload() {
           ) : (
             <div className="space-y-6">
               {/* Selected File Display */}
-              <div className="p-4 bg-muted/30 rounded-lg">
+              <div
+                className="p-6 transition-all duration-300 border-2 border-slate-300 dark:border-slate-500 rounded-sm backdrop-blur-sm"
+                style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+              >
                 <div className="flex items-start gap-4">
                   <div className="p-3 bg-primary/10 rounded-lg">
                     <File className="h-8 w-8 text-primary" />
@@ -196,18 +243,11 @@ export function Upload() {
                 <div className="flex gap-3">
                   <Button
                     onClick={handleAnalyze}
-                    className="flex-1"
+                    className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black"
                     size="lg"
                   >
                     <UploadIcon className="mr-2 h-4 w-4" />
                     Analyze Document
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleRemoveFile}
-                    size="lg"
-                  >
-                    Cancel
                   </Button>
                 </div>
               )}

@@ -1,16 +1,31 @@
 import { useParams } from "react-router-dom"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { getMockAnalysis } from "@/lib/mockData"
+import { getMockAnalysis, getAnalysisResult, hasAnalysisResult } from "@/lib/mockData"
 import { AlertCircle, CheckCircle2, AlertTriangle, Info, Download, Share2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { RealResults } from "./RealResults"
 
 export function DocumentView() {
   const { id } = useParams<{ id: string }>()
   const [analysis] = useState(getMockAnalysis(id || "1"))
   const [selectedFlaw, setSelectedFlaw] = useState<string | null>(null)
+  const [hasRealData, setHasRealData] = useState(false)
+  const [realData, setRealData] = useState<any>(null)
+
+  useEffect(() => {
+    if (id && hasAnalysisResult(id)) {
+      setHasRealData(true)
+      setRealData(getAnalysisResult(id))
+    }
+  }, [id])
+
+  // If we have real analysis data, show the RealResults component
+  if (hasRealData && realData) {
+    return <RealResults storedData={realData} />
+  }
 
   const getFlawIcon = (type: "critical" | "warning" | "info") => {
     switch (type) {

@@ -44,7 +44,7 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
         .chess-square {
           width: 30px;
           height: 30px;
-          animation: chessAnimation 2s ease-in-out infinite;
+          animation: chessAnimation 3s ease-in-out infinite;
           opacity: 0;
         }
 
@@ -62,15 +62,15 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
             opacity: 0;
             transform: scale(0) rotate(0deg);
           }
-          25% {
+          20% {
             opacity: 1;
             transform: scale(1) rotate(180deg);
           }
-          50% {
+          63% {
             opacity: 1;
             transform: scale(1) rotate(180deg);
           }
-          75% {
+          83% {
             opacity: 0;
             transform: scale(0) rotate(360deg);
           }

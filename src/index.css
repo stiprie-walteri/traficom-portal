@@ -154,7 +154,7 @@
   border-collapse: separate;
   border-spacing: 0;
   margin: 0;
-  border: 2px solid #d0d7de;
+  border: 1px solid #d0d7de;
 }
 
 .prose thead {
@@ -164,8 +164,8 @@
 .prose th {
   padding: 10px 15px;
   border: 1px solid #d0d7de;
-  border-right: 2px solid #d0d7de;
-  border-bottom: 2px solid #d0d7de;
+  border-right: 1px solid #d0d7de;
+  border-bottom: 1px solid #d0d7de;
   font-weight: 600;
   font-size: 1rem;
   text-align: left;
@@ -179,7 +179,7 @@
 .prose td {
   padding: 10px 15px;
   border: 1px solid #d0d7de;
-  border-right: 2px solid #d0d7de;
+  border-right: 1px solid #d0d7de;
   font-size: 0.95rem;
 }
 

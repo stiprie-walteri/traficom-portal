@@ -33,16 +33,83 @@ export interface DashboardStats {
   averageCompliance: number
 }
 
-// Mock documents for sidebar
-export const mockDocuments: Document[] = [
+// Mock documents for sidebar - mutable array
+export let mockDocuments: Document[] = [
   {
     id: "5",
     title: "Jet Support Maintinence",
     uploadDate: "2024-11-15",
-    status: "analyzed",
-    complianceScore: 83,
+    status: "analyzing", // Will change to "analyzed" when analysis completes
+    complianceScore: undefined, // Will be calculated from analysis results
   },
 ]
+
+// Function to add a new document to the list
+export const addDocument = (document: Document): void => {
+  mockDocuments.unshift(document) // Add to beginning of array
+}
+
+// Function to generate a unique ID
+export const generateDocumentId = (): string => {
+  return `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+}
+
+// Storage for real analysis results
+const analysisResultsStore: Map<string, any> = new Map()
+
+// Store analysis results for a document
+export const storeAnalysisResult = (documentId: string, result: any): void => {
+  analysisResultsStore.set(documentId, result)
+}
+
+// Retrieve analysis results for a document
+export const getAnalysisResult = (documentId: string): any | null => {
+  return analysisResultsStore.get(documentId) || null
+}
+
+// Check if a document has real analysis results
+export const hasAnalysisResult = (documentId: string): boolean => {
+  return analysisResultsStore.has(documentId)
+}
+
+// Calculate correctness score from parse result
+export const calculateCorrectnessScore = (parseResult: any): number => {
+  try {
+    const metrics = parseResult.metrics || parseResult.raw?.metrics || {}
+    const mainFound = Array.isArray(metrics['all_main_codes_found'] ?? metrics['allMainCodesFound']) 
+      ? (metrics['all_main_codes_found'] ?? metrics['allMainCodesFound']).length 
+      : 0
+    const mainNotFound = Array.isArray(metrics['all_main_codes_not_found'] ?? metrics['allMainCodesNotFound']) 
+      ? (metrics['all_main_codes_not_found'] ?? metrics['allMainCodesNotFound']).length 
+      : 0
+    
+    const totalMain = mainFound + mainNotFound
+    return totalMain > 0 ? Math.round((mainFound / totalMain) * 100) : 0
+  } catch {
+    return 0
+  }
+}
+
+// Set document status to analyzing
+export const setDocumentAnalyzing = (documentId: string): void => {
+  const doc = mockDocuments.find(d => d.id === documentId)
+  if (doc) {
+    doc.status = "analyzing"
+    // Trigger sidebar update
+    window.dispatchEvent(new Event('documentListUpdated'))
+  }
+}
+
+// Update document with analysis results
+export const updateDocumentWithResults = (documentId: string, parseResult: any): void => {
+  const doc = mockDocuments.find(d => d.id === documentId)
+  if (doc) {
+    doc.status = "analyzed"
+    doc.complianceScore = calculateCorrectnessScore(parseResult)
+    // Trigger sidebar update
+    window.dispatchEvent(new Event('documentListUpdated'))
+  }
+}
 
 // Mock dashboard stats
 export const mockDashboardStats: DashboardStats = {

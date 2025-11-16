@@ -5,14 +5,23 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoaderLong } from "@/components/ChessLoader"
+import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
 
 // warnings and highlights are provided by the backend `issues` list
 
-export function RealResults() {
+interface RealResultsProps {
+  storedData?: {
+    parseResult: ParseResult
+    filename: string
+  }
+}
+
+export function RealResults({ storedData }: RealResultsProps = {}) {
   const location = useLocation()
   const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
-  const filename = location.state?.filename as string | undefined
+  // Use stored data if provided, otherwise use location state
+  const filename = storedData?.filename || (location.state?.filename as string | undefined)
   const [showwarningsList, setShowwarningsList] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [, setApiError] = useState<string | null>(null)
@@ -33,7 +42,8 @@ export function RealResults() {
     subsectionsFound: number;
     subsectionsNotFound: number;
     sectionsNotInLegislation: number;
-  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+    mainNotFoundList: string[];
+  }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
   const hasProcessed = useRef(false)
 
   const markdownContent = useMemo(() => (
@@ -43,8 +53,14 @@ export function RealResults() {
       components={{
         table: ({ ...props}) => (
           <div className="table-wrapper">
-            <table {...props} />
+            <table {...props} className="rounded-sm" />
           </div>
+        ),
+        pre: ({ ...props}) => (
+          <pre {...props} className="rounded-sm" />
+        ),
+        code: ({ ...props}) => (
+          <code {...props} className="rounded-sm" />
         ),
       }}
     >
@@ -57,8 +73,8 @@ export function RealResults() {
     setIsLoading(true)
     setApiError(null)
     
-    // Check if data was passed via navigation state
-    const passedResult = location.state?.parseResult as ParseResult | undefined
+    // Check if data was passed via navigation state or props
+    const passedResult = storedData?.parseResult || (location.state?.parseResult as ParseResult | undefined)
     if (passedResult) {
       console.log('Using passed parse result:', passedResult);
       setLastResponse(passedResult)
@@ -92,6 +108,7 @@ export function RealResults() {
             subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
             subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
             sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+            mainNotFoundList: Array.isArray(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) ? (m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) as string[] : [],
           }
 
           setMetricsCounts(newMetrics)
@@ -102,7 +119,7 @@ export function RealResults() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
         } catch {
-          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
       }
       setIsLoading(false)
@@ -147,6 +164,7 @@ export function RealResults() {
             subsectionsFound: count(m['all_subsections_found'] ?? m['allSubsectionsFound'] ?? m['all_subsections_found']),
             subsectionsNotFound: count(m['all_subsections_not_found'] ?? m['allSubsectionsNotFound'] ?? m['all_subsections_not_found']),
             sectionsNotInLegislation: count(m['all_sections_not_in_legislation'] ?? m['allSectionsNotInLegislation'] ?? m['all_sections_not_in_legislation']),
+            mainNotFoundList: Array.isArray(m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) ? (m['all_main_codes_not_found'] ?? m['allMainCodesNotFound'] ?? m['all_main_codes_not_found']) as string[] : [],
           }
 
           setMetricsCounts(newMetrics)
@@ -157,7 +175,7 @@ export function RealResults() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
         } catch {
-          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0 })
+          setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
       }
     } catch (err) {
@@ -166,7 +184,7 @@ export function RealResults() {
     } finally {
       setIsLoading(false)
     }
-  }, [location.state])
+  }, [location.state, storedData])
   
   // documentSummary is loaded from API (see useEffect)
 
@@ -629,6 +647,19 @@ export function RealResults() {
               <span className="text-lg leading-none">Incorrect Sections</span>
             </div>
           </div>
+
+          {metricsCounts.mainNotFoundList.length > 0 && (
+            <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
+              <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
+              <div className="flex flex-wrap gap-2">
+                {metricsCounts.mainNotFoundList.map((section, index) => (
+                  <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                    {section}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 
