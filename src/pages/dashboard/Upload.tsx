@@ -201,7 +201,10 @@ export function Upload() {
           ) : (
             <div className="space-y-6">
               {/* Selected File Display */}
-              <div className="p-4 bg-muted/30 rounded-lg">
+              <div
+                className="p-6 transition-all duration-300 border-2 border-slate-300 dark:border-slate-500 rounded-sm backdrop-blur-sm"
+                style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+              >
                 <div className="flex items-start gap-4">
                   <div className="p-3 bg-primary/10 rounded-lg">
                     <File className="h-8 w-8 text-primary" />
@@ -240,18 +243,11 @@ export function Upload() {
                 <div className="flex gap-3">
                   <Button
                     onClick={handleAnalyze}
-                    className="flex-1"
+                    className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black"
                     size="lg"
                   >
                     <UploadIcon className="mr-2 h-4 w-4" />
                     Analyze Document
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleRemoveFile}
-                    size="lg"
-                  >
-                    Cancel
                   </Button>
                 </div>
               )}
