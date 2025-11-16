@@ -6,7 +6,7 @@ import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
-import { storeAnalysisResult, updateDocumentWithResults, setDocumentAnalyzing } from "@/lib/mockData"
+import { storeAnalysisResult, updateDocumentWithResults, setDocumentAnalyzing, hasAnalysisResult, mockDocuments } from "@/lib/mockData"
 
 const severityHighlightClasses: Record<string, string> = {
   error: "bg-red-300 hover:bg-red-400",
@@ -76,9 +76,13 @@ export function Example1() {
     setIsLoading(true)
     setApiError(null)
     
-    // Set document status to analyzing
     const documentId = "5"
-    setDocumentAnalyzing(documentId)
+    
+    // Only set to analyzing if document hasn't been analyzed yet
+    const doc = mockDocuments.find(d => d.id === documentId)
+    if (doc && doc.status !== "analyzed" && !hasAnalysisResult(documentId)) {
+      setDocumentAnalyzing(documentId)
+    }
     
     try {
       // Always send a fake file object in the request body for testing

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockDocuments, type Document } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import logoSvg from "@/assets/logo.svg"
 
 export function DashboardLayout() {
@@ -14,24 +14,31 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [documents, setDocuments] = useState<Document[]>(mockDocuments)
+  const [documents, setDocuments] = useState<Document[]>(() => [...mockDocuments])
 
-  // Refresh documents list when location changes or when a custom event is fired
+  // Function to refresh documents from the source
+  const refreshDocuments = useCallback(() => {
+    // Always read the latest state from mockDocuments to ensure we have all documents
+    const currentDocuments = [...mockDocuments]
+    setDocuments(currentDocuments)
+  }, [])
+
+  // Refresh documents list when location changes
   useEffect(() => {
-    setDocuments([...mockDocuments])
-  }, [location.pathname])
+    refreshDocuments()
+  }, [location.pathname, refreshDocuments])
 
   // Listen for document updates
   useEffect(() => {
     const handleDocumentUpdate = () => {
-      setDocuments([...mockDocuments])
+      refreshDocuments()
     }
 
     window.addEventListener('documentListUpdated', handleDocumentUpdate)
     return () => {
       window.removeEventListener('documentListUpdated', handleDocumentUpdate)
     }
-  }, [])
+  }, [refreshDocuments])
 
   const isActive = (path: string) => {
     if (path === "/dashboard" && location.pathname === "/dashboard") {

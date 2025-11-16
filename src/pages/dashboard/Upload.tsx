@@ -6,7 +6,7 @@ import { Upload as UploadIcon, File, X, CheckCircle2, FileText, ChevronDown, Che
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { cn } from "@/lib/utils"
 import documentService from "@/lib/documentService"
-import { addDocument, generateDocumentId, storeAnalysisResult, updateDocumentWithResults } from "@/lib/mockData"
+import { addDocument, generateDocumentId, storeAnalysisResult, updateDocumentWithResults, mockDocuments } from "@/lib/mockData"
 
 export function Upload() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -68,17 +68,21 @@ export function Upload() {
 
     setIsAnalyzing(true)
 
+    // Store file reference before clearing
+    const fileToAnalyze = selectedFile
+    const fileName = selectedFile.name
+
     // Generate a unique ID for the new document
     const newDocId = generateDocumentId()
     
     // Remove file extension from filename for cleaner title
-    const fileTitle = selectedFile.name.replace(/\.[^/.]+$/, "")
+    const fileTitle = fileName.replace(/\.[^/.]+$/, "")
     
     // Add the new document to the sidebar
     addDocument({
       id: newDocId,
       title: fileTitle,
-      uploadDate: "2024-11-16",
+      uploadDate: new Date().toISOString().split('T')[0], // Use current date
       status: "analyzing",
       complianceScore: undefined, // This will show as "-%"
     })
@@ -86,14 +90,20 @@ export function Upload() {
     // Trigger sidebar update
     window.dispatchEvent(new Event('documentListUpdated'))
 
+    // Clear the form immediately so user can upload another file
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+
     try {
       // Call the real parseReal API
-      const result = await documentService.parseReal(selectedFile)
+      const result = await documentService.parseReal(fileToAnalyze)
       
       // Store the analysis result with the document ID
       storeAnalysisResult(newDocId, {
         parseResult: result,
-        filename: selectedFile.name
+        filename: fileName
       })
       
       // Update document with calculated correctness score
@@ -103,8 +113,14 @@ export function Upload() {
       navigate(`/dashboard/document/${newDocId}`)
     } catch (error) {
       console.error("Error parsing document:", error)
-      alert("Failed to analyze document. Please try again.")
+      alert(`Failed to analyze document "${fileName}". Please try again.`)
       setIsAnalyzing(false)
+      // Update document status on error
+      const doc = mockDocuments.find(d => d.id === newDocId)
+      if (doc) {
+        doc.status = "analyzed" // Mark as analyzed even on error
+        window.dispatchEvent(new Event('documentListUpdated'))
+      }
     }
   }
 
