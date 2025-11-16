@@ -240,18 +240,97 @@ export function Example1() {
       nodePositions.push({ node: textNode, start, end: start + content.length })
     }
 
+    // Helper function to try multiple variations of the excerpt
+    const findTextVariations = (excerpt: string): string[] => {
+      const variations: string[] = []
+      
+      // Original
+      variations.push(excerpt)
+      
+      // Remove leading punctuation/whitespace
+      const noLeading = excerpt.replace(/^[.\s]+/, '')
+      if (noLeading !== excerpt) variations.push(noLeading)
+      
+      // Remove trailing punctuation/whitespace
+      const noTrailing = excerpt.replace(/[.\s]+$/, '')
+      if (noTrailing !== excerpt) variations.push(noTrailing)
+      
+      // Remove both
+      const trimmed = excerpt.replace(/^[.\s]+/, '').replace(/[.\s]+$/, '')
+      if (trimmed !== excerpt && trimmed.length > 0) variations.push(trimmed)
+      
+      // Remove markdown headers (##, ###, etc.)
+      const noHeader = excerpt.replace(/^#+\s*/, '')
+      if (noHeader !== excerpt) variations.push(noHeader)
+      
+      // Remove markdown formatting
+      const noBold = excerpt.replace(/\*\*/g, '').replace(/\*/g, '')
+      if (noBold !== excerpt) variations.push(noBold)
+      
+      // Remove markdown headers and formatting
+      const noHeaderBold = excerpt.replace(/^#+\s*/, '').replace(/\*\*/g, '').replace(/\*/g, '')
+      if (noHeaderBold !== excerpt && noHeaderBold.length > 0) variations.push(noHeaderBold)
+      
+      return [...new Set(variations)].filter(v => v.length > 0)
+    }
+
     // Process each issue as a warning pair
     let matchedIds: string[] = []
     let unmatchedIds: string[] = []
     issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code, severity }) => {
       const references = main_code ? [main_code] : []
       const highlightClass = getHighlightClassBySeverity(severity)
+      
+      // Normalize whitespace for both texts (keep original structure for position mapping)
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
-      const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
-      const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
+      
+      // Try to find the text using multiple variations
+      const variations = findTextVariations(highlightText)
+      let normalizedIndex = -1
+      let matchedVariation = highlightText
+      
+      for (const variation of variations) {
+        const normalizedHighlight = variation.replace(/\s+/g, ' ')
+        if (normalizedHighlight && normalizedHighlight.length > 3) {
+          const index = normalizedCurrent.indexOf(normalizedHighlight)
+          if (index !== -1) {
+            normalizedIndex = index
+            matchedVariation = variation
+            break
+          }
+        }
+      }
+      
+      // If still not found, try finding a substantial substring (fallback)
+      if (normalizedIndex === -1 && highlightText.length > 20) {
+        const normalizedHighlight = highlightText.replace(/\s+/g, ' ')
+        const minLength = Math.min(30, normalizedHighlight.length)
+        for (let start = 0; start <= normalizedHighlight.length - minLength; start++) {
+          const substring = normalizedHighlight.substring(start, start + minLength)
+          const index = normalizedCurrent.indexOf(substring)
+          if (index !== -1) {
+            // Found a match, try to extend it to find the full match
+            let extendedEnd = start + minLength
+            while (extendedEnd < normalizedHighlight.length) {
+              const extended = normalizedHighlight.substring(start, extendedEnd + 1)
+              if (normalizedCurrent.indexOf(extended) !== -1) {
+                extendedEnd++
+              } else {
+                break
+              }
+            }
+            normalizedIndex = index
+            // Use the original highlightText but adjust for the substring match
+            matchedVariation = highlightText.substring(start, Math.min(start + (extendedEnd - start), highlightText.length))
+            break
+          }
+        }
+      }
 
       if (normalizedIndex !== -1) {
         matchedIds.push(id)
+        const normalizedHighlight = matchedVariation.replace(/\s+/g, ' ')
+        
         // Map back to original text position for start
         let normalizedPos = 0
         let originalStartIndex = 0
@@ -387,16 +466,28 @@ export function Example1() {
             })
         }
       }
-    } else {
-      unmatchedIds.push(id)
-    }
-  })
+      } else {
+        unmatchedIds.push(id)
+        // Debug logging for unmatched issues
+        console.warn(`[Highlight] Could not find text for issue ${id}:`, {
+          excerpt: highlightText.substring(0, 100),
+          excerptLength: highlightText.length,
+          mainCode: main_code
+        })
+      }
+    })
 
   // Reorder issues: matched at start and end, unmatched in middle
   setIssues(prev => {
     const matchedIssues = prev.filter(i => matchedIds.includes(i.id))
     const unmatchedIssues = prev.filter(i => unmatchedIds.includes(i.id))
     const half = Math.floor(matchedIssues.length / 2)
+    
+    // Debug summary
+    if (unmatchedIssues.length > 0) {
+      console.log(`[Highlight] Summary: ${matchedIssues.length} matched, ${unmatchedIssues.length} unmatched out of ${prev.length} total issues`)
+    }
+    
     return [...matchedIssues.slice(0, half), ...unmatchedIssues, ...matchedIssues.slice(half)]
   })
 }  // Event delegation handler - use click but with optimized spans

@@ -170,8 +170,8 @@ export function DashboardLayout() {
                 <FileText className="h-4 w-4 flex-shrink-0" />
                 {!isCollapsed && (
                   <>
-                    <span className="whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left">Documents</span>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0">
+                    <span className="whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left text-gray-500">Documents</span>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0 text-gray-500">
                       {documentCount}
                     </Badge>
                   </>
