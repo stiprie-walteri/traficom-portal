@@ -6,6 +6,7 @@ import { Upload as UploadIcon, File, X, CheckCircle2, FileText, ChevronDown, Che
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { cn } from "@/lib/utils"
 import documentService from "@/lib/documentService"
+import { addDocument, generateDocumentId, storeAnalysisResult, updateDocumentWithResults } from "@/lib/mockData"
 
 export function Upload() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -67,12 +68,39 @@ export function Upload() {
 
     setIsAnalyzing(true)
 
+    // Generate a unique ID for the new document
+    const newDocId = generateDocumentId()
+    
+    // Remove file extension from filename for cleaner title
+    const fileTitle = selectedFile.name.replace(/\.[^/.]+$/, "")
+    
+    // Add the new document to the sidebar
+    addDocument({
+      id: newDocId,
+      title: fileTitle,
+      uploadDate: "2024-11-16",
+      status: "analyzing",
+      complianceScore: undefined, // This will show as "-%"
+    })
+
+    // Trigger sidebar update
+    window.dispatchEvent(new Event('documentListUpdated'))
+
     try {
       // Call the real parseReal API
       const result = await documentService.parseReal(selectedFile)
       
-      // Navigate to RealResults with the parsed data
-      navigate("/dashboard/real-results", { state: { parseResult: result, filename: selectedFile.name } })
+      // Store the analysis result with the document ID
+      storeAnalysisResult(newDocId, {
+        parseResult: result,
+        filename: selectedFile.name
+      })
+      
+      // Update document with calculated correctness score
+      updateDocumentWithResults(newDocId, result)
+      
+      // Navigate to the document view with the real data
+      navigate(`/dashboard/document/${newDocId}`)
     } catch (error) {
       console.error("Error parsing document:", error)
       alert("Failed to analyze document. Please try again.")

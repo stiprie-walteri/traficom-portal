@@ -6,6 +6,7 @@ import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
+import { storeAnalysisResult, updateDocumentWithResults, setDocumentAnalyzing } from "@/lib/mockData"
 
 const severityHighlightClasses: Record<string, string> = {
   error: "bg-red-300 hover:bg-red-400",
@@ -74,6 +75,11 @@ export function Example1() {
   const load = useCallback(async () => {
     setIsLoading(true)
     setApiError(null)
+    
+    // Set document status to analyzing
+    const documentId = "5"
+    setDocumentAnalyzing(documentId)
+    
     try {
       // Always send a fake file object in the request body for testing
 
@@ -122,6 +128,13 @@ export function Example1() {
           const correctness = totalMain > 0 ? Math.round((newMetrics.mainFound / totalMain) * 100) : 0
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
+
+          // Store the analysis result for document "5" and update its score
+          storeAnalysisResult(documentId, {
+            parseResult: res,
+            filename: "Jet Support Maintinence"
+          })
+          updateDocumentWithResults(documentId, res)
         } catch {
           setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
@@ -138,8 +151,9 @@ export function Example1() {
 
   // Helper function to get color class based on correctness score
   const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-green-600"
-    if (score >= 75) return "text-yellow-600"
+    if (score >= 90) return "text-blue-600"
+    if (score >= 80) return "text-green-600"
+    if (score >= 60) return "text-yellow-600"
     return "text-red-600"
   }
   
@@ -625,7 +639,7 @@ export function Example1() {
               <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
               <div className="flex flex-wrap gap-2">
                 {metricsCounts.mainNotFoundList.map((section, index) => (
-                  <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                  <Badge key={index} variant="destructive" className="rounded-sm bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
                     {section}
                   </Badge>
                 ))}

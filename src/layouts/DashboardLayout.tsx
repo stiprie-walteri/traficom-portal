@@ -4,9 +4,9 @@ import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { mockDocuments } from "@/lib/mockData"
+import { mockDocuments, type Document } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import logoSvg from "@/assets/logo.svg"
 
 export function DashboardLayout() {
@@ -14,6 +14,24 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [documents, setDocuments] = useState<Document[]>(mockDocuments)
+
+  // Refresh documents list when location changes or when a custom event is fired
+  useEffect(() => {
+    setDocuments([...mockDocuments])
+  }, [location.pathname])
+
+  // Listen for document updates
+  useEffect(() => {
+    const handleDocumentUpdate = () => {
+      setDocuments([...mockDocuments])
+    }
+
+    window.addEventListener('documentListUpdated', handleDocumentUpdate)
+    return () => {
+      window.removeEventListener('documentListUpdated', handleDocumentUpdate)
+    }
+  }, [])
 
   const isActive = (path: string) => {
     if (path === "/dashboard" && location.pathname === "/dashboard") {
@@ -25,7 +43,7 @@ export function DashboardLayout() {
     return false
   }
 
-  const documentCount = mockDocuments.length
+  const documentCount = documents.length
 
   // Close mobile sidebar when route changes
   const handleNavClick = () => {
@@ -167,7 +185,7 @@ export function DashboardLayout() {
 
                   {/* Document List */}
                   <div className="max-h-[400px] overflow-y-auto space-y-0.5 pl-3">
-                    {mockDocuments.map((doc) => {
+                    {documents.map((doc) => {
                       // Special handling for document 5 to link to example-1
                       const docPath = doc.id === "5" ? "/dashboard/example-1" : `/dashboard/document/${doc.id}`
                       return (
@@ -184,18 +202,22 @@ export function DashboardLayout() {
                               <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
                                 {doc.title}
                               </h3>
-                              {doc.status === "analyzed" && doc.complianceScore && (
+                              {doc.complianceScore !== undefined ? (
                                 <span
                                   className={cn(
                                     "text-xs font-bold flex-shrink-0",
                                     doc.complianceScore >= 90
                                       ? "text-green-600"
                                       : doc.complianceScore >= 75
-                                      ? "text-blue-600"
+                                      ? "text-yellow-600"
                                       : "text-red-600"
                                   )}
                                 >
                                   {doc.complianceScore}%
+                                </span>
+                              ) : (
+                                <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
+                                  -%
                                 </span>
                               )}
                             </div>

@@ -10,10 +10,18 @@ import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentSer
 
 // warnings and highlights are provided by the backend `issues` list
 
-export function RealResults() {
+interface RealResultsProps {
+  storedData?: {
+    parseResult: ParseResult
+    filename: string
+  }
+}
+
+export function RealResults({ storedData }: RealResultsProps = {}) {
   const location = useLocation()
   const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
-  const filename = location.state?.filename as string | undefined
+  // Use stored data if provided, otherwise use location state
+  const filename = storedData?.filename || (location.state?.filename as string | undefined)
   const [showwarningsList, setShowwarningsList] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [, setApiError] = useState<string | null>(null)
@@ -59,8 +67,8 @@ export function RealResults() {
     setIsLoading(true)
     setApiError(null)
     
-    // Check if data was passed via navigation state
-    const passedResult = location.state?.parseResult as ParseResult | undefined
+    // Check if data was passed via navigation state or props
+    const passedResult = storedData?.parseResult || (location.state?.parseResult as ParseResult | undefined)
     if (passedResult) {
       console.log('Using passed parse result:', passedResult);
       setLastResponse(passedResult)
@@ -170,7 +178,7 @@ export function RealResults() {
     } finally {
       setIsLoading(false)
     }
-  }, [location.state])
+  }, [location.state, storedData])
   
   // documentSummary is loaded from API (see useEffect)
 
