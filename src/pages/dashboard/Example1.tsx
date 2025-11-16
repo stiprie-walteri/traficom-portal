@@ -439,7 +439,7 @@ export function Example1() {
             e.stopPropagation();
             setShowwarningsList(!showwarningsList);
           }}
-          className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
+          className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-30 flex items-center gap-2"
           style={{ touchAction: "manipulation" }}
           title="View all comments"
         >
@@ -462,10 +462,10 @@ export function Example1() {
 
       {showwarningsList && (
         <div
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-40 max-h-96 overflow-y-auto backdrop-blur-sm"
+          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-30 backdrop-blur-sm flex flex-col h-[280px]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-between items-start mb-3">
+          <div className="flex justify-between items-start mb-3 flex-shrink-0">
               <h3 className="font-semibold text-sm text-gray-900">
                 All comments ({issues.length})
             </h3>
@@ -477,8 +477,8 @@ export function Example1() {
               ✕
             </button>
           </div>
-          <div className="space-y-2">
-            {issues.slice(0, 3).map((item) => (
+          <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
+            {issues.map((item) => (
               <button
                 key={item.id}
                 onClick={() => {
