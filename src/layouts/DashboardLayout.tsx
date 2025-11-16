@@ -186,7 +186,7 @@ export function DashboardLayout() {
                     <Search className="absolute left-6 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
                       placeholder="Search documents..."
-                      className="pl-8 h-9 bg-[hsl(var(--sidebar-hover))] border-0 text-sm placeholder:text-xs w-full"
+                      className="pl-8 h-9 bg-[hsl(var(--sidebar-hover))] border-0 focus:border focus:border-slate-300/50 dark:focus:border-slate-600/50 focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm placeholder:text-xs w-full"
                     />
                   </div>
 
