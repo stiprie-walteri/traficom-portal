@@ -435,7 +435,7 @@ export function Example1() {
           }}
           className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
           style={{ touchAction: "manipulation" }}
-          title="View all warnings"
+          title="View all comments"
         >
           <svg
             className="w-6 h-6"
@@ -461,7 +461,7 @@ export function Example1() {
         >
           <div className="flex justify-between items-start mb-3">
               <h3 className="font-semibold text-sm text-gray-900">
-                All warnings ({issues.length})
+                All comments ({issues.length})
             </h3>
             <button
               onClick={() => setShowwarningsList(false)}
