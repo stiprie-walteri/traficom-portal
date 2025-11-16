@@ -20,6 +20,13 @@ type RawApiResponse = {
   [key: string]: unknown;
 };
 
+type JobStatusResponse = {
+  job_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  result?: RawApiResponse;
+  error?: string;
+};
+
 export type NormalizedIssue = {
   id: string;
   code?: string;
@@ -171,96 +178,129 @@ const parseLegislation = async (): Promise<ParseResult> => {
 };
 
 const parseReal = async (file: File): Promise<ParseResult> => {
+  const POLLING_INTERVAL = 5000; // 5 seconds
+  const MAX_TIMEOUT = 3000000; // 50 minutes
+  const startTime = Date.now();
+
   try {
+    // Step 1: Start the job by uploading the file
     const form = new FormData();
     form.append("file", file, file.name);
 
-    // Use axios directly so browser sets the correct Content-Type with boundary
-    const response = await axios.post<RawApiResponse>("/api/parse-legislation", form,{
-        timeout: 3000000 
-    });
-    const res: RawApiResponse = response.data ?? {};
-
-    const markdown = safeString(res.markdown ?? "");
-
-    const metadata = res.parsed_codes?.document_metadata ?? {};
-    const organization = metadata["organization"] as string | undefined;
-    const approval_number = metadata["approval_number"] as string | undefined;
-    const parsed_date = metadata["parsed_date"] as string | undefined;
-
-    const summaryTextParts: string[] = [];
-    if (organization) summaryTextParts.push(`Organization: ${organization}`);
-    if (approval_number) summaryTextParts.push(`Approval: ${approval_number}`);
-    if (parsed_date) summaryTextParts.push(`Parsed: ${parsed_date}`);
-    const summaryText = summaryTextParts.join(" — ") || "";
-    // Prefer canonical `res.issues.issues`, fall back to `parsed_codes.issues` for older responses
-    const rawIssues = res.issues?.issues ?? res.parsed_codes?.issues?.issues ?? [];
-    const issues: NormalizedIssue[] = (rawIssues || []).map((raw, i) => {
-      const submission_excerpt = raw["submission_excerpt"] ?? raw["excerpt"] ?? undefined;
-      const explanation = raw["explanation"] ?? raw["comment"] ?? undefined;
-      const main_code = raw["main_code"] ?? raw["mainCode"] ?? raw["code"] ?? undefined;
-      const code = raw["code"] ?? undefined;
-      const legislation_source = raw["legislation_source"] ?? raw["legislationSource"] ?? undefined;
-      const submission_sections = Array.isArray(raw["submission_sections"]) ? (raw["submission_sections"] as string[]) : undefined;
-
-      const id = normalizeId(main_code, i);
-
-      return {
-        id,
-        code: typeof code === "string" ? code : undefined,
-        main_code: typeof main_code === "string" ? main_code : undefined,
-        legislation_source: typeof legislation_source === "string" ? legislation_source : undefined,
-        submission_excerpt: typeof submission_excerpt === "string" ? submission_excerpt : undefined,
-        explanation: typeof explanation === "string" ? explanation : undefined,
-        submission_sections: submission_sections,
-        raw: raw,
-      };
+    const startResponse = await axios.post<{ job_id: string; status: string }>("/api/parse-legislation", form, {
+      timeout: 60000, // 1 minute for initial upload
     });
 
-    // Normalize sections if present
-    const rawSections = Array.isArray(res.parsed_codes?.sections) ? (res.parsed_codes!.sections as Array<Record<string, unknown>>) : [];
-    const normalizeSection = (s: Record<string, unknown> | undefined): ParsedSection => {
-      if (!s) return {};
-      const subsectionsRaw = Array.isArray(s["subsections"]) ? (s["subsections"] as Array<Record<string, unknown>>) : [];
-      return {
-        section_number: typeof s["section_number"] === "string" ? s["section_number"] : typeof s["sectionNumber"] === "string" ? s["sectionNumber"] : undefined,
-        title: typeof s["title"] === "string" ? s["title"] : undefined,
-        legislation_codes: Array.isArray(s["legislation_codes"]) ? (s["legislation_codes"] as Array<string | Record<string, unknown>>) : Array.isArray(s["legislationCodes"]) ? (s["legislationCodes"] as Array<string | Record<string, unknown>>) : [],
-        text: typeof s["text"] === "string" ? s["text"] : undefined,
-        subsections: subsectionsRaw.map(ss => normalizeSection(ss)),
-        raw: s,
-      };
-    };
-    
-    const sections: ParsedSection[] = (rawSections || []).map(s => normalizeSection(s));
+    const { job_id } = startResponse.data;
+    if (!job_id) {
+      return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], error: "Failed to start job: no job_id returned" };
+    }
 
-    const metrics = (res.metrics && typeof res.metrics === 'object')
-      ? (res.metrics as Record<string, unknown>)
-      : (res.parsed_codes && typeof res.parsed_codes === 'object' && typeof (res.parsed_codes as Record<string, unknown> & { metrics?: unknown }).metrics === 'object')
-        ? ((res.parsed_codes as Record<string, unknown> & { metrics?: Record<string, unknown> }).metrics as Record<string, unknown>)
-        : undefined;
+    // Step 2: Poll for status until completed or failed
+    while (true) {
+      // Check timeout
+      if (Date.now() - startTime > MAX_TIMEOUT) {
+        return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], error: "Timeout: job did not complete within the allowed time" };
+      }
 
-    return {
-      ok: true,
-      markdown,
-      summary: {
-        text: summaryText,
-        organization,
-        approval_number,
-        parsed_date,
-        raw: metadata as Record<string, unknown>,
-      },
-      issues,
-      sections,
-      metrics,
-      raw: res,
-    };
+      // Poll the status endpoint
+      const statusResponse = await axios.get<JobStatusResponse>(`/api/parse-legislation-status/${job_id}`, {
+        timeout: 30000, // 30 seconds per poll
+      });
+
+      const { status, result, error: jobError } = statusResponse.data;
+
+      if (status === "completed" && result) {
+        // Job completed successfully, process the result
+        const res: RawApiResponse = result;
+
+        const markdown = safeString(res.markdown ?? "");
+
+        const metadata = res.parsed_codes?.document_metadata ?? {};
+        const organization = metadata["organization"] as string | undefined;
+        const approval_number = metadata["approval_number"] as string | undefined;
+        const parsed_date = metadata["parsed_date"] as string | undefined;
+
+        const summaryTextParts: string[] = [];
+        if (organization) summaryTextParts.push(`Organization: ${organization}`);
+        if (approval_number) summaryTextParts.push(`Approval: ${approval_number}`);
+        if (parsed_date) summaryTextParts.push(`Parsed: ${parsed_date}`);
+        const summaryText = summaryTextParts.join(" — ") || "";
+
+        const rawIssues = res.issues?.issues ?? res.parsed_codes?.issues?.issues ?? [];
+        const issues: NormalizedIssue[] = (rawIssues || []).map((raw, i) => {
+          const submission_excerpt = raw["submission_excerpt"] ?? raw["excerpt"] ?? undefined;
+          const explanation = raw["explanation"] ?? raw["comment"] ?? undefined;
+          const main_code = raw["main_code"] ?? raw["mainCode"] ?? raw["code"] ?? undefined;
+          const code = raw["code"] ?? undefined;
+          const legislation_source = raw["legislation_source"] ?? raw["legislationSource"] ?? undefined;
+          const submission_sections = Array.isArray(raw["submission_sections"]) ? (raw["submission_sections"] as string[]) : undefined;
+
+          const id = normalizeId(main_code, i);
+
+          return {
+            id,
+            code: typeof code === "string" ? code : undefined,
+            main_code: typeof main_code === "string" ? main_code : undefined,
+            legislation_source: typeof legislation_source === "string" ? legislation_source : undefined,
+            submission_excerpt: typeof submission_excerpt === "string" ? submission_excerpt : undefined,
+            explanation: typeof explanation === "string" ? explanation : undefined,
+            submission_sections: submission_sections,
+            raw: raw,
+          };
+        });
+
+        const rawSections = Array.isArray(res.parsed_codes?.sections) ? (res.parsed_codes!.sections as Array<Record<string, unknown>>) : [];
+        const normalizeSection = (s: Record<string, unknown> | undefined): ParsedSection => {
+          if (!s) return {};
+          const subsectionsRaw = Array.isArray(s["subsections"]) ? (s["subsections"] as Array<Record<string, unknown>>) : [];
+          return {
+            section_number: typeof s["section_number"] === "string" ? s["section_number"] : typeof s["sectionNumber"] === "string" ? s["sectionNumber"] : undefined,
+            title: typeof s["title"] === "string" ? s["title"] : undefined,
+            legislation_codes: Array.isArray(s["legislation_codes"]) ? (s["legislation_codes"] as Array<string | Record<string, unknown>>) : Array.isArray(s["legislationCodes"]) ? (s["legislationCodes"] as Array<string | Record<string, unknown>>) : [],
+            text: typeof s["text"] === "string" ? s["text"] : undefined,
+            subsections: subsectionsRaw.map(ss => normalizeSection(ss)),
+            raw: s,
+          };
+        };
+
+        const sections: ParsedSection[] = (rawSections || []).map(s => normalizeSection(s));
+
+        const metrics = (res.metrics && typeof res.metrics === 'object')
+          ? (res.metrics as Record<string, unknown>)
+          : (res.parsed_codes && typeof res.parsed_codes === 'object' && typeof (res.parsed_codes as Record<string, unknown> & { metrics?: unknown }).metrics === 'object')
+            ? ((res.parsed_codes as Record<string, unknown> & { metrics?: Record<string, unknown> }).metrics as Record<string, unknown>)
+            : undefined;
+
+        return {
+          ok: true,
+          markdown,
+          summary: {
+            text: summaryText,
+            organization,
+            approval_number,
+            parsed_date,
+            raw: metadata as Record<string, unknown>,
+          },
+          issues,
+          sections,
+          metrics,
+          raw: res,
+        };
+      } else if (status === "failed") {
+        return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], error: jobError || "Job failed" };
+      } else if (status === "pending" || status === "processing") {
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
+      } else {
+        return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], error: `Unknown status: ${status}` };
+      }
+    }
   } catch (e) {
-    // axios error.response was normalized earlier in api wrapper
-    if (e && typeof e === "object" && "data" in e) {
-      const maybe = e as { data?: unknown };
-      const data = (maybe.data && typeof maybe.data === "object") ? (maybe.data as RawApiResponse) : undefined;
-      return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], raw: data, error: "server error" };
+    // Handle network or other errors
+    if (axios.isAxiosError(e) && e.response) {
+      const data = e.response.data as JobStatusResponse | undefined;
+      return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], raw: data?.result, error: data?.error || "Server error" };
     }
     return { ok: false, markdown: "", summary: { text: "", raw: {} }, issues: [], error: "Network or unknown error" };
   }
