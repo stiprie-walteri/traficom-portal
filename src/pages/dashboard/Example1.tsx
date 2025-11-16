@@ -62,8 +62,14 @@ export function Example1() {
       components={{
         table: ({ ...props}) => (
           <div className="table-wrapper">
-            <table {...props} />
+            <table {...props} className="rounded-sm" />
           </div>
+        ),
+        pre: ({ ...props}) => (
+          <pre {...props} className="rounded-sm" />
+        ),
+        code: ({ ...props}) => (
+          <code {...props} className="rounded-sm" />
         ),
       }}
     >
