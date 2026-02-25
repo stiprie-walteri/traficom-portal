@@ -52,6 +52,10 @@ EOF
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Copy the entrypoint script that injects env vars at runtime
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Expose port 3000
 EXPOSE 3000
 
@@ -59,5 +63,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:3000/ || exit 1
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start via entrypoint (generates config.js from env vars, then starts nginx)
+CMD ["/docker-entrypoint.sh"]
