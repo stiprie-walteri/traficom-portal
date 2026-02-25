@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, User, Menu } from "lucide-react"
+import { Upload, FileText, Search, PanelLeftClose, Menu, LogIn } from "lucide-react"
 import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -8,10 +8,13 @@ import { mockDocuments, type Document } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
 import { useState, useEffect, useCallback } from "react"
 import logoSvg from "@/assets/logo.svg"
+import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
 
 export function DashboardLayout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { isSignedIn, isLoaded } = useAuth()
+  const { user } = useUser()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const [documents, setDocuments] = useState<Document[]>(() => [...mockDocuments])
@@ -68,7 +71,7 @@ export function DashboardLayout() {
       )}
 
       {/* Sidebar Container - Fixed width, clipped reveal effect */}
-      <aside 
+      <aside
         className={cn(
           "border-r border-slate-300 transition-all duration-300 ease-in-out overflow-hidden",
           // Mobile behavior - fixed overlay with slide animation
@@ -137,171 +140,224 @@ export function DashboardLayout() {
 
           {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden px-3 py-3 space-y-1">
-            <Link to="/dashboard" title="Upload Document" onClick={handleNavClick}>
-              <div
-                className={cn(
-                  "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
-                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
-                  isActive("/dashboard")
-                    ? "bg-[hsl(var(--sidebar-active))]"
-                    : "hover:bg-[hsl(var(--sidebar-hover))]"
-                )}
-              >
-                <Upload className="h-4 w-4 flex-shrink-0" />
-                {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Upload Document</span>}
-              </div>
-            </Link>
-
-            {/* Documents Section Header */}
-            <div className="pt-2">
-              <button
-                onClick={() => {
-                  if (isCollapsed) {
-                    setIsCollapsed(false)
-                  }
-                }}
-                title="Documents"
-                className={cn(
-                  "w-full py-2.5 text-sm font-medium flex items-center rounded-sm transition-colors",
-                  isCollapsed ? "pl-4 hover:bg-[hsl(var(--sidebar-hover))] cursor-pointer" : "pl-3 pr-3 gap-3",
-                  location.pathname.includes("/dashboard/document/") && "bg-[hsl(var(--sidebar-active))]"
-                )}
-              >
-                <FileText className="h-4 w-4 flex-shrink-0" />
-                {!isCollapsed && (
-                  <>
-                    <span className="whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left text-gray-500">Documents</span>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0 text-gray-500">
-                      {documentCount}
-                    </Badge>
-                  </>
-                )}
-              </button>
-
-              {/* Documents List - Always visible when expanded */}
-              {!isCollapsed && (
-                <div className="mt-1 space-y-0.5">
-                  {/* Search */}
-                  <div className="relative mb-2 pl-3 pr-3 overflow-hidden">
-                    <Search className="absolute left-6 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search documents..."
-                      className="pl-8 h-9 bg-[hsl(var(--sidebar-hover))] border-0 focus:border focus:border-slate-300/50 dark:focus:border-slate-600/50 focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm placeholder:text-xs w-full"
-                    />
-                  </div>
-
-                  {/* Document List */}
-                  <div className="max-h-[400px] overflow-y-auto space-y-0.5 pl-3">
-                    {documents.map((doc) => {
-                      // Special handling for document 5 to link to example-1
-                      const docPath = doc.id === "5" ? "/dashboard/example-1" : `/dashboard/document/${doc.id}`
-                      return (
-                        <Link key={doc.id} to={docPath} onClick={handleNavClick}>
-                          <div
-                            className={cn(
-                              "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
-                              isActive(docPath)
-                                ? "bg-[hsl(var(--sidebar-active))]"
-                                : "hover:bg-[hsl(var(--sidebar-hover))]"
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
-                              <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
-                                {doc.title}
-                              </h3>
-                              {doc.complianceScore !== undefined ? (
-                                <span
-                                  className={cn(
-                                    "text-xs font-bold flex-shrink-0",
-                                    doc.complianceScore >= 90
-                                      ? "text-green-600"
-                                      : doc.complianceScore >= 75
-                                      ? "text-yellow-600"
-                                      : "text-red-600"
-                                  )}
-                                >
-                                  {doc.complianceScore}%
-                                </span>
-                              ) : (
-                                <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
-                                  -%
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between overflow-hidden">
-                              <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-                                {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                              </span>
-                              {doc.status === "analyzing" && (
-                                <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
-                                  Analyzing...
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </Link>
-                      )
-                    })}
-                  </div>
+            {/* Upload Document - only for authenticated users */}
+            {isSignedIn && (
+              <Link to="/dashboard" title="Upload Document" onClick={handleNavClick}>
+                <div
+                  className={cn(
+                    "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
+                    isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
+                    isActive("/dashboard")
+                      ? "bg-[hsl(var(--sidebar-active))]"
+                      : "hover:bg-[hsl(var(--sidebar-hover))]"
+                  )}
+                >
+                  <Upload className="h-4 w-4 flex-shrink-0" />
+                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Upload Document</span>}
                 </div>
-              )}
-            </div>
+              </Link>
+            )}
+
+            {/* Documents Section Header - only for authenticated users */}
+            {isSignedIn && (
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    if (isCollapsed) {
+                      setIsCollapsed(false)
+                    }
+                  }}
+                  title="Documents"
+                  className={cn(
+                    "w-full py-2.5 text-sm font-medium flex items-center rounded-sm transition-colors",
+                    isCollapsed ? "pl-4 hover:bg-[hsl(var(--sidebar-hover))] cursor-pointer" : "pl-3 pr-3 gap-3",
+                    location.pathname.includes("/dashboard/document/") && "bg-[hsl(var(--sidebar-active))]"
+                  )}
+                >
+                  <FileText className="h-4 w-4 flex-shrink-0" />
+                  {!isCollapsed && (
+                    <>
+                      <span className="whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left text-gray-500">Documents</span>
+                      <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0 text-gray-500">
+                        {documentCount}
+                      </Badge>
+                    </>
+                  )}
+                </button>
+
+                {/* Documents List - Always visible when expanded */}
+                {!isCollapsed && (
+                  <div className="mt-1 space-y-0.5">
+                    {/* Search */}
+                    <div className="relative mb-2 pl-3 pr-3 overflow-hidden">
+                      <Search className="absolute left-6 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search documents..."
+                        className="pl-8 h-9 bg-[hsl(var(--sidebar-hover))] border-0 focus:border focus:border-slate-300/50 dark:focus:border-slate-600/50 focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm placeholder:text-xs w-full"
+                      />
+                    </div>
+
+                    {/* Document List */}
+                    <div className="max-h-[400px] overflow-y-auto space-y-0.5 pl-3">
+                      {documents.map((doc) => {
+                        // Special handling for document 5 to link to example-1
+                        const docPath = doc.id === "5" ? "/dashboard/example-1" : `/dashboard/document/${doc.id}`
+                        return (
+                          <Link key={doc.id} to={docPath} onClick={handleNavClick}>
+                            <div
+                              className={cn(
+                                "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
+                                isActive(docPath)
+                                  ? "bg-[hsl(var(--sidebar-active))]"
+                                  : "hover:bg-[hsl(var(--sidebar-hover))]"
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
+                                <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
+                                  {doc.title}
+                                </h3>
+                                {doc.complianceScore !== undefined ? (
+                                  <span
+                                    className={cn(
+                                      "text-xs font-bold flex-shrink-0",
+                                      doc.complianceScore >= 90
+                                        ? "text-green-600"
+                                        : doc.complianceScore >= 75
+                                          ? "text-yellow-600"
+                                          : "text-red-600"
+                                    )}
+                                  >
+                                    {doc.complianceScore}%
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
+                                    -%
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-between overflow-hidden">
+                                <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                                  {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </span>
+                                {doc.status === "analyzing" && (
+                                  <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
+                                    Analyzing...
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Guest sidebar: only show Example Document link */}
+            {!isSignedIn && isLoaded && (
+              <Link to="/dashboard/example-1" title="Example Document" onClick={handleNavClick}>
+                <div
+                  className={cn(
+                    "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
+                    isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
+                    isActive("/dashboard/example-1")
+                      ? "bg-[hsl(var(--sidebar-active))]"
+                      : "hover:bg-[hsl(var(--sidebar-hover))]"
+                  )}
+                >
+                  <FileText className="h-4 w-4 flex-shrink-0" />
+                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Example Document</span>}
+                </div>
+              </Link>
+            )}
           </nav>
 
           {/* User Section at Bottom */}
           <div className="border-t border-slate-300 p-3">
-            <div className={cn(
-              "py-2.5 flex items-center",
-              isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3"
-            )}>
-              <User className="h-4 w-4 flex-shrink-0" />
-              {!isCollapsed && (
-                <div className="flex flex-col overflow-hidden min-w-0">
-                  <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Guest user</span>
-                </div>
-              )}
-            </div>
+            {isSignedIn ? (
+              <div className={cn(
+                "py-2.5 flex items-center",
+                isCollapsed ? "justify-center" : "pl-3 pr-3 gap-3"
+              )}>
+                <UserButton
+                  afterSignOutUrl="/"
+                  appearance={{
+                    elements: {
+                      avatarBox: "h-7 w-7",
+                    },
+                  }}
+                />
+                {!isCollapsed && user && (
+                  <div className="flex flex-col overflow-hidden min-w-0">
+                    <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+                      {user.fullName || user.firstName || 'User'}
+                    </span>
+                    {user.primaryEmailAddress && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                        {user.primaryEmailAddress.emailAddress}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={cn(
+                "py-2.5 flex items-center",
+                isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3"
+              )}>
+                <SignInButton mode="modal">
+                  <button className="flex items-center gap-3 w-full hover:opacity-80 transition-opacity">
+                    <LogIn className="h-4 w-4 flex-shrink-0" />
+                    {!isCollapsed && (
+                      <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Sign in</span>
+                    )}
+                  </button>
+                </SignInButton>
+              </div>
+            )}
           </div>
         </div>
       </aside>
 
-          {/* Main Content */}
-          <main 
-            className="flex-1 overflow-auto bg-background"
-            style={{
-              backgroundImage: 'radial-gradient(circle, rgba(209, 213, 219, 0.1) 2px, transparent 1px)',
-              backgroundSize: '15px 15px'
-            }}
-          >
-            {/* Mobile Header */}
-            <div 
-              className="md:hidden sticky top-0 z-30 border-b border-slate-300"
-              style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+      {/* Main Content */}
+      <main
+        className="flex-1 overflow-auto bg-background"
+        style={{
+          backgroundImage: 'radial-gradient(circle, rgba(209, 213, 219, 0.1) 2px, transparent 1px)',
+          backgroundSize: '15px 15px'
+        }}
+      >
+        {/* Mobile Header */}
+        <div
+          className="md:hidden sticky top-0 z-30 border-b border-slate-300"
+          style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+        >
+          <div className="p-6 pb-4 flex items-center justify-between">
+            <button
+              className="flex-1 hover:opacity-70 transition-opacity h-8 flex items-center"
+              onClick={() => navigate('/')}
+              title="Go to home"
             >
-              <div className="p-6 pb-4 flex items-center justify-between">
-                <button
-                  className="flex-1 hover:opacity-70 transition-opacity h-8 flex items-center"
-                  onClick={() => navigate('/')}
-                  title="Go to home"
-                >
-                  <div className="w-full max-w-[140px]">
-                    <img src={logoSvg} alt="Logo" className="w-full h-auto object-contain" />
-                  </div>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 flex-shrink-0 ml-2"
-                  onClick={() => setIsMobileOpen(true)}
-                  aria-label="Open menu"
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
+              <div className="w-full max-w-[140px]">
+                <img src={logoSvg} alt="Logo" className="w-full h-auto object-contain" />
               </div>
-            </div>
-            
-            <Outlet />
-          </main>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 flex-shrink-0 ml-2"
+              onClick={() => setIsMobileOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
-      )
-    }
+
+        <Outlet />
+      </main>
+    </div>
+  )
+}
