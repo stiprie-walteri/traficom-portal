@@ -76,7 +76,7 @@ export function LandingPage() {
                 onClick={() => navigate('/dashboard/example-1')}
               >
                 <FileStack className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                See in action
+                Demo
               </Button>
 
               {isSignedIn ? (
@@ -86,7 +86,7 @@ export function LandingPage() {
                   onClick={() => navigate('/dashboard')}
                 >
                   <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                  Test upload
+                  Log In
                 </Button>
               ) : (
                 <SignInButton mode="modal" forceRedirectUrl="/dashboard">
@@ -95,7 +95,7 @@ export function LandingPage() {
                     className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
                   >
                     <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                    Test upload
+                    Log In
                   </Button>
                 </SignInButton>
               )}
