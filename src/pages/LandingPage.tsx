@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/Logo"
-import { FileStack, FileUp, FileText } from "lucide-react"
+import { FileStack, LogIn, FileText } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import checkMateImg from "@/assets/CheckMate.png"
 import { useAuth, SignInButton } from "@clerk/clerk-react"
@@ -85,7 +85,7 @@ export function LandingPage() {
                   className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
                   onClick={() => navigate('/dashboard')}
                 >
-                  <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                  <LogIn className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                   Log In
                 </Button>
               ) : (
@@ -94,7 +94,7 @@ export function LandingPage() {
                     variant="outline"
                     className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
                   >
-                    <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    <LogIn className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                     Log In
                   </Button>
                 </SignInButton>

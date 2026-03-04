@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from "react"
-import { Pencil } from "lucide-react"
+
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
@@ -699,7 +699,7 @@ export function Example1() {
 
                 {/* Edit Button with Chess Hover Effect */}
                 <button
-                  className="relative px-6 py-2 bg-white border-2 border-black font-bold text-xs tracking-widest uppercase transition-all duration-300 hover:bg-black hover:text-white flex items-center gap-2 overflow-hidden group/btn shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
+                  className="relative px-6 py-2 bg-white border-2 border-black font-bold text-sm tracking-widest uppercase transition-all duration-300 hover:bg-black hover:text-white flex justify-center items-center overflow-hidden group/btn shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
                 >
                   {/* Checkerboard background revealed on hover */}
                   <div
@@ -711,11 +711,7 @@ export function Example1() {
                     }}
                   />
 
-                  <span className="relative z-10 flex items-center gap-2">
-                    <span className="text-lg opacity-0 group-hover/btn:opacity-100 transition-all duration-300 transform -translate-x-2 group-hover/btn:translate-x-0 group-hover/btn:animate-knight-jump">
-                      ♞
-                    </span>
-                    <Pencil className="w-3.5 h-3.5" />
+                  <span className="relative z-10 flex items-center justify-center">
                     <span>Edit</span>
                   </span>
                 </button>
@@ -791,16 +787,6 @@ export function Example1() {
       )}
 
       <style>{`
-        @keyframes knight-jump {
-          0% { transform: translateY(0) translateX(0); }
-          25% { transform: translateY(-8px) translateX(0); }
-          50% { transform: translateY(-8px) translateX(-4px); }
-          75% { transform: translateY(-4px) translateX(-4px); }
-          100% { transform: translateY(0) translateX(0); }
-        }
-        .animate-knight-jump {
-          animation: knight-jump 0.8s ease-in-out infinite;
-        }
       `}</style>
     </div>
   );
