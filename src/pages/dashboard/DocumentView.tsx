@@ -7,23 +7,89 @@ import { getMockAnalysis, getAnalysisResult, hasAnalysisResult } from "@/lib/moc
 import { AlertCircle, CheckCircle2, AlertTriangle, Info, Download, Share2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RealResults } from "./RealResults"
+import { useUser } from "@clerk/clerk-react"
+import { useApiClient } from "@/hooks/useApiClient"
+import { DocumentStorageService } from "@/lib/documentStorageService"
+import { useMemo } from "react"
+import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 
 export function DocumentView() {
   const { id } = useParams<{ id: string }>()
-  const [analysis] = useState(getMockAnalysis(id || "1"))
+  const { user } = useUser()
+  const apiClient = useApiClient()
+  const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
+
+  const [analysis] = useState(() => getMockAnalysis(id || "1"))
   const [selectedFlaw, setSelectedFlaw] = useState<string | null>(null)
-  const [hasRealData, setHasRealData] = useState(false)
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [realData, setRealData] = useState<any>(null)
 
   useEffect(() => {
-    if (id && hasAnalysisResult(id)) {
-      setHasRealData(true)
-      setRealData(getAnalysisResult(id))
-    }
-  }, [id])
+    const fetchDoc = async () => {
+      if (!id || !user) return
 
-  // If we have real analysis data, show the RealResults component
-  if (hasRealData && realData) {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        // First check if it's a real analysis result in mockData (PDF flow)
+        if (hasAnalysisResult(id)) {
+          setRealData(getAnalysisResult(id))
+          setIsLoading(false)
+          return
+        }
+
+        // If not, try fetching from Document Storage API
+        const response = await storageService.getDocument(user.id, id)
+
+        // Transform API response to the format RealResults expects
+        setRealData({
+          parseResult: {
+            ok: true,
+            markdown: response.content_md,
+            issues: [], // Storage API might not have issues yet
+            summary: {
+              organization: response.document.title,
+              text: "Document retrieved from storage."
+            }
+          },
+          filename: response.document.title + ".md",
+          document_id: id,
+          organization_id: user.id
+        })
+      } catch (err: any) {
+        console.error("Error fetching document:", err)
+        // If API fails, we still have the mock analysis from useState fallback
+        // But for documents that don't exist in mockData, we should show error
+        if (id !== "1" && id !== "2" && id !== "3" && id !== "4" && id !== "5") {
+          setError("Document not found.")
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDoc()
+  }, [id, user, storageService])
+
+  if (isLoading) {
+    return <div className="h-screen flex items-center justify-center"><ChessLoaderLong /></div>
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-6 py-12 text-center">
+        <h2 className="text-2xl font-bold mb-4">Error</h2>
+        <p className="text-muted-foreground">{error}</p>
+        <Button onClick={() => window.history.back()} className="mt-6">Go Back</Button>
+      </div>
+    )
+  }
+
+  // If we have real analysis data or API data, show the RealResults component
+  if (realData) {
     return <RealResults storedData={realData} />
   }
 
@@ -59,8 +125,8 @@ export function DocumentView() {
               analysis.complianceScore >= 90
                 ? "default"
                 : analysis.complianceScore >= 75
-                ? "secondary"
-                : "destructive"
+                  ? "secondary"
+                  : "destructive"
             }
             className="text-sm px-3 py-1"
           >
@@ -164,7 +230,7 @@ export function DocumentView() {
                   </p>
 
                   <h2 className="text-xl font-bold mb-4">2. Regulatory Framework</h2>
-                  
+
                   <h3 className="text-lg font-semibold mb-3">2.1 Legal References</h3>
                   <div
                     className={cn(
@@ -189,7 +255,7 @@ export function DocumentView() {
                   </div>
 
                   <h2 className="text-xl font-bold mb-4">3. Safety Requirements</h2>
-                  
+
                   <h3 className="text-lg font-semibold mb-3">3.4 Operational Standards</h3>
                   <div
                     className={cn(
@@ -231,7 +297,7 @@ export function DocumentView() {
                   </div>
 
                   <h2 className="text-xl font-bold mb-4">5. Implementation Procedures</h2>
-                  
+
                   <h3 className="text-lg font-semibold mb-3">5.1 Process Overview</h3>
                   <div
                     className={cn(
@@ -256,7 +322,7 @@ export function DocumentView() {
                   </div>
 
                   <h2 className="text-xl font-bold mb-4">6. Operational Guidelines</h2>
-                  
+
                   <h3 className="text-lg font-semibold mb-3">6.2 Personnel Requirements</h3>
                   <div
                     className={cn(
@@ -281,7 +347,7 @@ export function DocumentView() {
                   </div>
 
                   <h2 className="text-xl font-bold mb-4">8. Contact Information</h2>
-                  
+
                   <h3 className="text-lg font-semibold mb-3">8.3 Support Details</h3>
                   <div
                     className={cn(

@@ -7,7 +7,7 @@ import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
-import { storeAnalysisResult, updateDocumentWithResults, setDocumentAnalyzing, hasAnalysisResult, mockDocuments } from "@/lib/mockData"
+import { storeAnalysisResult, hasAnalysisResult, mockDocuments } from "@/lib/mockData"
 
 const severityHighlightClasses: Record<string, string> = {
   error: "bg-red-300 hover:bg-red-400",
@@ -86,9 +86,10 @@ export function Example1() {
     const documentId = "5"
 
     // Only set to analyzing if document hasn't been analyzed yet
+    // Only check if document hasn't been analyzed yet
     const doc = mockDocuments.find(d => d.id === documentId)
     if (doc && doc.status !== "analyzed" && !hasAnalysisResult(documentId)) {
-      setDocumentAnalyzing(documentId)
+      // Mock analyzing state if needed
     }
 
     try {
@@ -140,12 +141,10 @@ export function Example1() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
 
-          // Store the analysis result for document "5" and update its score
           storeAnalysisResult(documentId, {
             parseResult: res,
             filename: "Jet Support Maintinence"
           })
-          updateDocumentWithResults(documentId, res)
         } catch {
           setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }

@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockDocuments, type Document } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import logoSvg from "@/assets/logo.svg"
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
+import { useApiClient } from "@/hooks/useApiClient"
+import { DocumentStorageService } from "@/lib/documentStorageService"
 
 export function DashboardLayout() {
   const location = useLocation()
@@ -17,14 +19,47 @@ export function DashboardLayout() {
   const { user } = useUser()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [documents, setDocuments] = useState<Document[]>(() => [...mockDocuments])
+  const [documents, setDocuments] = useState<Document[]>([])
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false)
+
+  const apiClient = useApiClient()
+  const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
   // Function to refresh documents from the source
-  const refreshDocuments = useCallback(() => {
-    // Always read the latest state from mockDocuments to ensure we have all documents
-    const currentDocuments = [...mockDocuments]
-    setDocuments(currentDocuments)
-  }, [])
+  const refreshDocuments = useCallback(async () => {
+    if (!isSignedIn || !user) {
+      setDocuments([...mockDocuments])
+      return
+    }
+
+    setIsLoadingDocs(true)
+    try {
+      // Fetch documents from API
+      const response = await storageService.listDocuments(user.id)
+      const apiDocs = response.items
+
+      // Transform API results to match our Document type
+      const transformedApiDocs: Document[] = apiDocs.map((doc: any) => ({
+        id: doc.document_id,
+        title: doc.title || "Untitled",
+        uploadDate: doc.created_at,
+        status: "analyzed", // API documents are always "analyzed" in terms of storage
+        complianceScore: undefined, // Storage API doesn't have scores yet
+      }))
+
+      // Merge with mock documents that might have active analysis results
+      // Filter out mock docs that have the same ID as API docs (if any)
+      const otherMockDocs = mockDocuments.filter(md => !transformedApiDocs.some(ad => ad.id === md.id))
+
+      setDocuments([...transformedApiDocs, ...otherMockDocs])
+    } catch (error) {
+      console.error("Error fetching documents:", error)
+      // Fallback to mock documents on error
+      setDocuments([...mockDocuments])
+    } finally {
+      setIsLoadingDocs(false)
+    }
+  }, [isSignedIn, user, storageService])
 
   // Refresh documents list when location changes
   useEffect(() => {
@@ -179,7 +214,7 @@ export function DashboardLayout() {
                     <>
                       <span className="whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left text-gray-500">Documents</span>
                       <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0 text-gray-500">
-                        {documentCount}
+                        {isLoadingDocs ? "..." : documentCount}
                       </Badge>
                     </>
                   )}

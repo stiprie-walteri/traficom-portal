@@ -33,21 +33,8 @@ export interface DashboardStats {
   averageCompliance: number
 }
 
-// Mock documents for sidebar - mutable array
-export let mockDocuments: Document[] = [
-  {
-    id: "5",
-    title: "Jet Support Maintinence",
-    uploadDate: "2024-11-15",
-    status: "analyzing", // Will change to "analyzed" when analysis completes
-    complianceScore: undefined, // Will be calculated from analysis results
-  },
-]
-
-// Function to add a new document to the list
-export const addDocument = (document: Document): void => {
-  mockDocuments.unshift(document) // Add to beginning of array
-}
+// Mock documents for sidebar - now empty as we use the API
+export let mockDocuments: Document[] = []
 
 // Function to generate a unique ID
 export const generateDocumentId = (): string => {
@@ -76,38 +63,17 @@ export const hasAnalysisResult = (documentId: string): boolean => {
 export const calculateCorrectnessScore = (parseResult: any): number => {
   try {
     const metrics = parseResult.metrics || parseResult.raw?.metrics || {}
-    const mainFound = Array.isArray(metrics['all_main_codes_found'] ?? metrics['allMainCodesFound']) 
-      ? (metrics['all_main_codes_found'] ?? metrics['allMainCodesFound']).length 
+    const mainFound = Array.isArray(metrics['all_main_codes_found'] ?? metrics['allMainCodesFound'])
+      ? (metrics['all_main_codes_found'] ?? metrics['allMainCodesFound']).length
       : 0
-    const mainNotFound = Array.isArray(metrics['all_main_codes_not_found'] ?? metrics['allMainCodesNotFound']) 
-      ? (metrics['all_main_codes_not_found'] ?? metrics['allMainCodesNotFound']).length 
+    const mainNotFound = Array.isArray(metrics['all_main_codes_not_found'] ?? metrics['allMainCodesNotFound'])
+      ? (metrics['all_main_codes_not_found'] ?? metrics['allMainCodesNotFound']).length
       : 0
-    
+
     const totalMain = mainFound + mainNotFound
     return totalMain > 0 ? Math.round((mainFound / totalMain) * 100) : 0
   } catch {
     return 0
-  }
-}
-
-// Set document status to analyzing
-export const setDocumentAnalyzing = (documentId: string): void => {
-  const doc = mockDocuments.find(d => d.id === documentId)
-  if (doc) {
-    doc.status = "analyzing"
-    // Trigger sidebar update
-    window.dispatchEvent(new Event('documentListUpdated'))
-  }
-}
-
-// Update document with analysis results
-export const updateDocumentWithResults = (documentId: string, parseResult: any): void => {
-  const doc = mockDocuments.find(d => d.id === documentId)
-  if (doc) {
-    doc.status = "analyzed"
-    doc.complianceScore = calculateCorrectnessScore(parseResult)
-    // Trigger sidebar update
-    window.dispatchEvent(new Event('documentListUpdated'))
   }
 }
 
@@ -202,17 +168,12 @@ export const mockAnalysis: DocumentAnalysis = {
 
 // Function to get mock analysis by document ID
 export const getMockAnalysis = (documentId: string): DocumentAnalysis => {
-  // In a real app, this would fetch from an API
-  // For now, return the same mock data for all documents
   const doc = mockDocuments.find((d) => d.id === documentId)
-  if (!doc) {
-    throw new Error("Document not found")
-  }
-  
+
   return {
     ...mockAnalysis,
     id: documentId,
-    documentTitle: doc.title,
+    documentTitle: doc?.title || "Document Analysis",
   }
 }
 
