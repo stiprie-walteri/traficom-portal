@@ -39,7 +39,7 @@ export function Upload() {
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ]
-  const mdAcceptedTypes = ["text/markdown", "text/plain", ""] // empty string for files with no mime type but md extension
+  const mdAcceptedTypes = ["text/markdown", "text/plain", "", "application/pdf"] // empty string for files with no mime type but md extension
 
   const handleAnalysisFileSelect = (file: File) => {
     if (analysisAcceptedTypes.includes(file.type)) {
@@ -135,15 +135,15 @@ export function Upload() {
   // --- Markdown Upload Handlers ---
 
   const handleMdFileSelect = (file: File) => {
-    // Basic check for markdown or text files, or file ending in .md
-    if (mdAcceptedTypes.includes(file.type) || file.name.endsWith(".md") || file.name.endsWith(".markdown")) {
+    // Basic check for markdown or text files, or file ending in .md/.pdf
+    if (mdAcceptedTypes.includes(file.type) || file.name.endsWith(".md") || file.name.endsWith(".markdown") || file.name.endsWith(".pdf")) {
       setSelectedMdFile(file)
       // Auto-set title from filename (strip extension)
       if (!mdFileTitle) {
         setMdFileTitle(file.name.replace(/\.[^/.]+$/, ""))
       }
     } else {
-      alert("Please select a Markdown document (.md, .markdown)")
+      alert("Please select a Markdown or PDF document (.md, .pdf)")
     }
   }
 
@@ -202,14 +202,14 @@ export function Upload() {
 
       // Clear form
       handleRemoveMdFile()
-      alert("Markdown document uploaded successfully!")
+      alert("Document uploaded successfully!")
 
       // We could navigate to it right away
       navigate(`/dashboard/document/${result.document_id}`)
 
     } catch (error) {
-      console.error("Error uploading markdown document:", error)
-      alert("Failed to upload Markdown document. Please try again.")
+      console.error("Error uploading document:", error)
+      alert("Failed to upload document. Please try again.")
     } finally {
       setIsUploadingMd(false)
     }
@@ -338,9 +338,9 @@ export function Upload() {
             )}
           </div>
 
-          {/* Centered Header for Markdown upload */}
+          {/* Centered Header for Markdown/PDF upload */}
           <div className="mb-4 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
-            <h2 className="text-xl mb-2 text-muted-foreground">Or Upload Markdown Document</h2>
+            <h2 className="text-xl mb-2 text-muted-foreground">Or Store Document for Later</h2>
           </div>
 
           <div className="space-y-6 max-w-3xl mx-auto mb-12">
@@ -371,16 +371,16 @@ export function Upload() {
                   </div>
                   <div>
                     <h3 className="text-md font-semibold mb-1">
-                      Store Raw Markdown
+                      Store Document File
                     </h3>
                     <p className="text-sm text-muted-foreground mb-1">
-                      Directly upload a .md file
+                      Directly upload a .md or .pdf file
                     </p>
                   </div>
                   <input
                     ref={mdFileInputRef}
                     type="file"
-                    accept=".md,.markdown"
+                    accept=".md,.markdown,.pdf"
                     onChange={handleMdFileInputChange}
                     className="hidden"
                   />
@@ -401,7 +401,7 @@ export function Upload() {
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold truncate">{selectedMdFile.name}</h4>
                           <p className="text-sm text-muted-foreground">
-                            {formatFileSize(selectedMdFile.size)} • Markdown
+                            {formatFileSize(selectedMdFile.size)} • {selectedMdFile.name.toLowerCase().endsWith(".pdf") ? "PDF" : "Markdown"}
                           </p>
                         </div>
                         {!isUploadingMd && (
@@ -453,7 +453,7 @@ export function Upload() {
                       size="lg"
                     >
                       <UploadIcon className="mr-2 h-4 w-4" />
-                      Upload Markdown Document
+                      Upload to Storage
                     </Button>
                   </div>
                 ) : (
