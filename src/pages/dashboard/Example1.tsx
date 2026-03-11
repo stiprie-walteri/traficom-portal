@@ -7,7 +7,7 @@ import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
-import { storeAnalysisResult, hasAnalysisResult, mockDocuments } from "@/lib/mockData"
+import { storeAnalysisResult, updateDocumentWithResults, setDocumentAnalyzing, hasAnalysisResult, mockDocuments } from "@/lib/mockData"
 
 const severityHighlightClasses: Record<string, string> = {
   error: "bg-red-300 hover:bg-red-400",
@@ -86,10 +86,9 @@ export function Example1() {
     const documentId = "5"
 
     // Only set to analyzing if document hasn't been analyzed yet
-    // Only check if document hasn't been analyzed yet
     const doc = mockDocuments.find(d => d.id === documentId)
     if (doc && doc.status !== "analyzed" && !hasAnalysisResult(documentId)) {
-      // Mock analyzing state if needed
+      setDocumentAnalyzing(documentId)
     }
 
     try {
@@ -141,10 +140,12 @@ export function Example1() {
 
           setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
 
+          // Store the analysis result for document "5" and update its score
           storeAnalysisResult(documentId, {
             parseResult: res,
             filename: "Jet Support Maintinence"
           })
+          updateDocumentWithResults(documentId, res)
         } catch {
           setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
@@ -698,7 +699,7 @@ export function Example1() {
 
                 {/* Edit Button with Chess Hover Effect */}
                 <button
-                  className="relative px-6 py-2 bg-white border-2 border-black font-bold text-xs tracking-widest uppercase transition-all duration-300 hover:bg-black hover:text-white flex items-center gap-2 overflow-hidden group/btn shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
+                  className="relative px-2 py-2 bg-white border-2 border-black font-bold text-xs tracking-widest uppercase transition-all duration-300 hover:bg-black hover:text-white flex items-center justify-center gap-2 overflow-hidden group/btn shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
                 >
                   {/* Checkerboard background revealed on hover */}
                   <div
@@ -711,10 +712,17 @@ export function Example1() {
                   />
 
                   <span className="relative z-10 flex items-center gap-2">
-                    <span className="text-lg opacity-0 group-hover/btn:opacity-100 transition-all duration-300 transform -translate-x-2 group-hover/btn:translate-x-0 group-hover/btn:animate-knight-jump">
-                      ♞
+                    {/* Icon slot: pencil swaps to horse on hover without shifting layout */}
+                    <span className="relative flex items-center justify-center w-4 h-4">
+                      <span className="absolute inset-0 flex items-center justify-center opacity-100 group-hover/btn:opacity-0 transition-opacity duration-300">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/btn:opacity-100 transition-all duration-300 group-hover/btn:animate-knight-jump">
+                        <span className="text-lg leading-none">
+                          ♞
+                        </span>
+                      </span>
                     </span>
-                    <Pencil className="w-3.5 h-3.5" />
                     <span>Edit</span>
                   </span>
                 </button>

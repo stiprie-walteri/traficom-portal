@@ -1,16 +1,14 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, Menu, LogIn } from "lucide-react"
+import { Upload, FileText, Search, PanelLeftClose, Menu, LogIn, Trash2 } from "lucide-react"
 import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { mockDocuments, type Document } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import logoSvg from "@/assets/logo.svg"
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
-import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService } from "@/lib/documentStorageService"
 
 export function DashboardLayout() {
   const location = useLocation()
@@ -19,47 +17,15 @@ export function DashboardLayout() {
   const { user } = useUser()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false)
-
-  const apiClient = useApiClient()
-  const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
+  const [documents, setDocuments] = useState<Document[]>(() => [...mockDocuments])
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   // Function to refresh documents from the source
-  const refreshDocuments = useCallback(async () => {
-    if (!isSignedIn || !user) {
-      setDocuments([...mockDocuments])
-      return
-    }
-
-    setIsLoadingDocs(true)
-    try {
-      // Fetch documents from API
-      const response = await storageService.listDocuments(user.id)
-      const apiDocs = response.items
-
-      // Transform API results to match our Document type
-      const transformedApiDocs: Document[] = apiDocs.map((doc: any) => ({
-        id: doc.document_id,
-        title: doc.title || "Untitled",
-        uploadDate: doc.created_at,
-        status: "analyzed", // API documents are always "analyzed" in terms of storage
-        complianceScore: undefined, // Storage API doesn't have scores yet
-      }))
-
-      // Merge with mock documents that might have active analysis results
-      // Filter out mock docs that have the same ID as API docs (if any)
-      const otherMockDocs = mockDocuments.filter(md => !transformedApiDocs.some(ad => ad.id === md.id))
-
-      setDocuments([...transformedApiDocs, ...otherMockDocs])
-    } catch (error) {
-      console.error("Error fetching documents:", error)
-      // Fallback to mock documents on error
-      setDocuments([...mockDocuments])
-    } finally {
-      setIsLoadingDocs(false)
-    }
-  }, [isSignedIn, user, storageService])
+  const refreshDocuments = useCallback(() => {
+    // Always read the latest state from mockDocuments to ensure we have all documents
+    const currentDocuments = [...mockDocuments]
+    setDocuments(currentDocuments)
+  }, [])
 
   // Refresh documents list when location changes
   useEffect(() => {
@@ -93,6 +59,20 @@ export function DashboardLayout() {
   // Close mobile sidebar when route changes
   const handleNavClick = () => {
     setIsMobileOpen(false)
+  }
+
+  const handleDeleteDocument = (docId: string) => {
+    setPendingDeleteId(docId)
+  }
+
+  const confirmDeleteDocument = () => {
+    if (!pendingDeleteId) return
+    // Placeholder: backend delete not wired yet
+    setPendingDeleteId(null)
+  }
+
+  const cancelDeleteDocument = () => {
+    setPendingDeleteId(null)
   }
 
   return (
@@ -214,7 +194,7 @@ export function DashboardLayout() {
                     <>
                       <span className="whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left text-gray-500">Documents</span>
                       <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0 text-gray-500">
-                        {isLoadingDocs ? "..." : documentCount}
+                        {documentCount}
                       </Badge>
                     </>
                   )}
@@ -238,50 +218,68 @@ export function DashboardLayout() {
                         // Special handling for document 5 to link to example-1
                         const docPath = doc.id === "5" ? "/dashboard/example-1" : `/dashboard/document/${doc.id}`
                         return (
-                          <Link key={doc.id} to={docPath} onClick={handleNavClick}>
-                            <div
-                              className={cn(
-                                "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
-                                isActive(docPath)
-                                  ? "bg-[hsl(var(--sidebar-active))]"
-                                  : "hover:bg-[hsl(var(--sidebar-hover))]"
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
-                                <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
-                                  {doc.title}
-                                </h3>
-                                {doc.complianceScore !== undefined ? (
-                                  <span
-                                    className={cn(
-                                      "text-xs font-bold flex-shrink-0",
-                                      doc.complianceScore >= 90
-                                        ? "text-green-600"
-                                        : doc.complianceScore >= 75
-                                          ? "text-yellow-600"
-                                          : "text-red-600"
+                          <div key={doc.id} className="group relative">
+                            <Link to={docPath} onClick={handleNavClick}>
+                              <div
+                                className={cn(
+                                  "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
+                                  isActive(docPath)
+                                    ? "bg-[hsl(var(--sidebar-active))]"
+                                    : "hover:bg-[hsl(var(--sidebar-hover))]"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
+                                  <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
+                                    {doc.title}
+                                  </h3>
+                                  {doc.complianceScore !== undefined ? (
+                                    <span
+                                      className={cn(
+                                        "text-xs font-bold flex-shrink-0",
+                                        doc.complianceScore >= 90
+                                          ? "text-green-600"
+                                          : doc.complianceScore >= 75
+                                            ? "text-yellow-600"
+                                            : "text-red-600"
+                                      )}
+                                    >
+                                      {doc.complianceScore}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
+                                      -%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center justify-between overflow-hidden">
+                                  <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                                    {new Date(doc.uploadDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    {doc.status === "analyzing" && (
+                                      <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
+                                        Analyzing...
+                                      </span>
                                     )}
-                                  >
-                                    {doc.complianceScore}%
-                                  </span>
-                                ) : (
-                                  <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
-                                    -%
-                                  </span>
-                                )}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        handleDeleteDocument(doc.id)
+                                      }}
+                                      title="Delete document"
+                                      aria-label="Delete document"
+                                    >
+                                      <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                    </Button>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex items-center justify-between overflow-hidden">
-                                <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-                                  {new Date(doc.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                </span>
-                                {doc.status === "analyzing" && (
-                                  <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
-                                    Analyzing...
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </Link>
+                            </Link>
+                          </div>
                         )
                       })}
                     </div>
@@ -393,6 +391,38 @@ export function DashboardLayout() {
 
         <Outlet />
       </main>
+
+      {pendingDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-sm border border-slate-300 bg-white px-5 py-4 shadow-lg">
+            <p className="text-sm font-semibold text-slate-900 mb-1">
+              Delete this document (coming soon)
+            </p>
+            <p className="text-xs text-slate-700 mb-4">
+              The delete action is not yet connected to the backend. For now, this dialog is only a visual preview.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+                onClick={cancelDeleteDocument}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={confirmDeleteDocument}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

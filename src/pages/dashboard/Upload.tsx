@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react"
+import { useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -6,121 +6,124 @@ import { Upload as UploadIcon, File, X, CheckCircle2, FileText, ChevronDown, Che
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { cn } from "@/lib/utils"
 import documentService from "@/lib/documentService"
-import { generateDocumentId, storeAnalysisResult } from "@/lib/mockData"
-import { useUser } from "@clerk/clerk-react"
-import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService } from "@/lib/documentStorageService"
+import { addDocument, generateDocumentId, storeAnalysisResult, updateDocumentWithResults, mockDocuments } from "@/lib/mockData"
 
 export function Upload() {
-  // Existing state for analysis upload
-  const [selectedAnalysisFile, setSelectedAnalysisFile] = useState<File | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isAnalysisDragging, setIsAnalysisDragging] = useState(false)
-  const analysisFileInputRef = useRef<HTMLInputElement>(null)
-
-  // New state for markdown upload
-  const [selectedMdFile, setSelectedMdFile] = useState<File | null>(null)
-  const [isUploadingMd, setIsUploadingMd] = useState(false)
-  const [isMdDragging, setIsMdDragging] = useState(false)
-  const [mdFileTitle, setMdFileTitle] = useState("")
-  const [mdFileMessage, setMdFileMessage] = useState("")
-  const mdFileInputRef = useRef<HTMLInputElement>(null)
-
+  const [isDragging, setIsDragging] = useState(false)
   const [isLearnMoreOpen, setIsLearnMoreOpen] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
-  const { user } = useUser()
-  const apiClient = useApiClient()
-  const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
-
-  // Accepted types
-  const analysisAcceptedTypes = [
+  const acceptedTypes = [
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ]
-  const mdAcceptedTypes = ["text/markdown", "text/plain", "", "application/pdf"] // empty string for files with no mime type but md extension
 
-  const handleAnalysisFileSelect = (file: File) => {
-    if (analysisAcceptedTypes.includes(file.type)) {
-      setSelectedAnalysisFile(file)
+  const handleFileSelect = (file: File) => {
+    if (acceptedTypes.includes(file.type)) {
+      setSelectedFile(file)
+      setErrorMessage(null)
     } else {
-      alert("Please select a PDF or Word document (.pdf, .doc, .docx)")
+      setErrorMessage("Please select a PDF or Word document (.pdf, .doc, .docx)")
     }
   }
 
-  const handleAnalysisDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    setIsAnalysisDragging(false)
-
+    setIsDragging(false)
+    
     const file = e.dataTransfer.files[0]
     if (file) {
-      handleAnalysisFileSelect(file)
+      handleFileSelect(file)
     }
   }
 
-  const handleAnalysisDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
-    setIsAnalysisDragging(true)
+    setIsDragging(true)
   }
 
-  const handleAnalysisDragLeave = () => {
-    setIsAnalysisDragging(false)
+  const handleDragLeave = () => {
+    setIsDragging(false)
   }
 
-  const handleAnalysisFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      handleAnalysisFileSelect(file)
+      handleFileSelect(file)
     }
   }
 
-  const handleRemoveAnalysisFile = () => {
-    setSelectedAnalysisFile(null)
-    if (analysisFileInputRef.current) {
-      analysisFileInputRef.current.value = ""
+  const handleRemoveFile = () => {
+    setSelectedFile(null)
+    setErrorMessage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
   }
 
   const handleAnalyze = async () => {
-    if (!selectedAnalysisFile) return
+    if (!selectedFile) return
 
     setIsAnalyzing(true)
 
     // Store file reference before clearing
-    const fileToAnalyze = selectedAnalysisFile
-    const fileName = selectedAnalysisFile.name
+    const fileToAnalyze = selectedFile
+    const fileName = selectedFile.name
 
     // Generate a unique ID for the new document
     const newDocId = generateDocumentId()
+    
+    // Remove file extension from filename for cleaner title
+    const fileTitle = fileName.replace(/\.[^/.]+$/, "")
+    
+    // Add the new document to the sidebar
+    addDocument({
+      id: newDocId,
+      title: fileTitle,
+      uploadDate: new Date().toISOString().split('T')[0], // Use current date
+      status: "analyzing",
+      complianceScore: undefined, // This will show as "-%"
+    })
 
+    // Trigger sidebar update
+    window.dispatchEvent(new Event('documentListUpdated'))
 
     // Clear the form immediately so user can upload another file
-    setSelectedAnalysisFile(null)
-    if (analysisFileInputRef.current) {
-      analysisFileInputRef.current.value = ""
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
 
     try {
       // Call the real parseReal API
       const result = await documentService.parseReal(fileToAnalyze)
-
+      
       // Store the analysis result with the document ID
       storeAnalysisResult(newDocId, {
         parseResult: result,
         filename: fileName
       })
-
-      // Update document list (sidebar)
-      window.dispatchEvent(new Event('documentListUpdated'))
-
+      
+      // Update document with calculated correctness score
+      updateDocumentWithResults(newDocId, result)
+      
       // Navigate to the document view with the real data
       navigate(`/dashboard/document/${newDocId}`)
     } catch (error) {
       console.error("Error parsing document:", error)
-      alert(`Failed to analyze document "${fileName}". Please try again.`)
+      setErrorMessage(`Failed to analyze document "${fileName}". Please try again.`)
       setIsAnalyzing(false)
-      window.dispatchEvent(new Event('documentListUpdated'))
+      // Update document status on error
+      const doc = mockDocuments.find(d => d.id === newDocId)
+      if (doc) {
+        doc.status = "analyzed" // Mark as analyzed even on error
+        window.dispatchEvent(new Event('documentListUpdated'))
+      }
     }
   }
 
@@ -130,89 +133,6 @@ export function Upload() {
     const sizes = ["Bytes", "KB", "MB", "GB"]
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i]
-  }
-
-  // --- Markdown Upload Handlers ---
-
-  const handleMdFileSelect = (file: File) => {
-    // Basic check for markdown or text files, or file ending in .md/.pdf
-    if (mdAcceptedTypes.includes(file.type) || file.name.endsWith(".md") || file.name.endsWith(".markdown") || file.name.endsWith(".pdf")) {
-      setSelectedMdFile(file)
-      // Auto-set title from filename (strip extension)
-      if (!mdFileTitle) {
-        setMdFileTitle(file.name.replace(/\.[^/.]+$/, ""))
-      }
-    } else {
-      alert("Please select a Markdown or PDF document (.md, .pdf)")
-    }
-  }
-
-  const handleMdDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsMdDragging(false)
-
-    const file = e.dataTransfer.files[0]
-    if (file) {
-      handleMdFileSelect(file)
-    }
-  }
-
-  const handleMdDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsMdDragging(true)
-  }
-
-  const handleMdDragLeave = () => {
-    setIsMdDragging(false)
-  }
-
-  const handleMdFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      handleMdFileSelect(file)
-    }
-  }
-
-  const handleRemoveMdFile = () => {
-    setSelectedMdFile(null)
-    setMdFileTitle("")
-    setMdFileMessage("")
-    if (mdFileInputRef.current) {
-      mdFileInputRef.current.value = ""
-    }
-  }
-
-  const handleUploadMd = async () => {
-    if (!selectedMdFile || !user) return
-
-    setIsUploadingMd(true)
-
-    try {
-      const result = await storageService.uploadDocument({
-        organizationId: user.id, // Using user ID as organization ID as agreed
-        actorUserId: user.id,
-        file: selectedMdFile,
-        title: mdFileTitle || undefined,
-        message: mdFileMessage || undefined,
-      })
-
-      // We should ideally fetch documents here after a successful upload
-      // For now we will trigger our existing event pattern
-      window.dispatchEvent(new Event('documentListUpdated'))
-
-      // Clear form
-      handleRemoveMdFile()
-      alert("Document uploaded successfully!")
-
-      // We could navigate to it right away
-      navigate(`/dashboard/document/${result.document_id}`)
-
-    } catch (error) {
-      console.error("Error uploading document:", error)
-      alert("Failed to upload document. Please try again.")
-    } finally {
-      setIsUploadingMd(false)
-    }
   }
 
   return (
@@ -228,246 +148,133 @@ export function Upload() {
             </p>
           </div>
 
-          {/* Centered Header for Analysis */}
+          {errorMessage && (
+            <div className="max-w-3xl mx-auto mb-6">
+              <div className="flex items-start justify-between gap-3 rounded-sm border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 shadow-sm">
+                <p className="leading-relaxed">{errorMessage}</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                  onClick={() => setErrorMessage(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Centered Header */}
           <div className="mb-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
             <h1 className="text-2xl mb-2">Upload Document for Analysis</h1>
           </div>
 
-          {/* Drop Zone for Analysis - No Card Wrapper */}
-          <div className="space-y-6 max-w-3xl mx-auto mb-16">
-            {!selectedAnalysisFile ? (
-              <div
-                className={cn(
-                  "p-12 text-center transition-all duration-300 border-2 border-dotted border-slate-300 dark:border-slate-700 rounded-sm cursor-pointer group hover:border-slate-400 dark:hover:border-slate-600 hover:shadow-md backdrop-blur-sm",
-                  isAnalysisDragging && "bg-primary/10 border-primary scale-105 shadow-lg backdrop-blur-md"
-                )}
-                style={{ backgroundColor: isAnalysisDragging ? undefined : 'hsl(var(--sidebar-bg))' }}
-                onDrop={handleAnalysisDrop}
-                onDragOver={handleAnalysisDragOver}
-                onDragLeave={handleAnalysisDragLeave}
-                onClick={() => analysisFileInputRef.current?.click()}
-              >
-                <div className="flex flex-col items-center gap-4">
-                  <div
-                    className={cn(
-                      "p-4 backdrop-blur-sm rounded-lg group-hover:bg-primary/10 transition-colors",
-                      isAnalysisDragging && "bg-primary/20"
-                    )}
-                    style={{ backgroundColor: isAnalysisDragging ? undefined : 'hsl(var(--sidebar-hover))' }}
-                  >
-                    <UploadIcon className={cn(
-                      "h-12 w-12 text-black dark:text-black group-hover:text-primary transition-colors",
-                      isAnalysisDragging && "text-primary"
-                    )} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold mb-1">
-                      Drop your document here for analysis
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-1">
-                      or click to browse files
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-3 flex items-center gap-2 justify-center">
-                      <FileText className="h-3 w-3" />
-                      PDF, DOC, DOCX • Max 50MB
-                    </p>
-                  </div>
-                  <input
-                    ref={analysisFileInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    onChange={handleAnalysisFileInputChange}
-                    className="hidden"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Selected File Display */}
-                <div
-                  className="p-6 transition-all duration-300 border-2 border-slate-300 dark:border-slate-500 rounded-sm backdrop-blur-sm"
-                  style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+          {/* Drop Zone - No Card Wrapper */}
+          <div className="space-y-6 max-w-3xl mx-auto">
+          {!selectedFile ? (
+            <div
+              className={cn(
+                "p-12 text-center transition-all duration-300 border-2 border-dotted border-slate-300 dark:border-slate-700 rounded-sm cursor-pointer group hover:border-slate-400 dark:hover:border-slate-600 hover:shadow-md",
+                isDragging && "bg-primary/10 border-primary scale-105 shadow-lg"
+              )}
+              style={{ backgroundColor: isDragging ? undefined : 'hsl(var(--sidebar-bg))' }}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="flex flex-col items-center gap-4">
+                <div 
+                  className={cn(
+                    "p-4 rounded-lg group-hover:bg-primary/10 transition-colors",
+                    isDragging && "bg-primary/20"
+                  )}
+                  style={{ backgroundColor: isDragging ? undefined : 'hsl(var(--sidebar-hover))' }}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg">
-                      <File className="h-8 w-8 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold truncate">{selectedAnalysisFile.name}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {formatFileSize(selectedAnalysisFile.size)} • {selectedAnalysisFile.type.split("/")[1]?.toUpperCase() || 'FILE'}
-                          </p>
-                        </div>
-                        {!isAnalyzing && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleRemoveAnalysisFile}
-                            className="shrink-0"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
+                  <UploadIcon className={cn(
+                    "h-12 w-12 text-black dark:text-black group-hover:text-primary transition-colors",
+                    isDragging && "text-primary"
+                  )} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">
+                    Drop your document here
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    or click to browse files
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-2 justify-center">
+                    <FileText className="h-3 w-3" />
+                    PDF • Max 50MB
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Selected File Display */}
+              <div
+                className="p-6 transition-all duration-300 border-2 border-slate-300 dark:border-slate-500 rounded-sm"
+                style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-primary/10 rounded-lg">
+                    <File className="h-8 w-8 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold truncate">{selectedFile.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatFileSize(selectedFile.size)} • {selectedFile.type.split("/")[1].toUpperCase()}
+                        </p>
                       </div>
                       {!isAnalyzing && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          <span className="text-sm text-green-600">Ready to analyze</span>
-                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleRemoveFile}
+                          className="shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       )}
                     </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                {!isAnalyzing && (
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={handleAnalyze}
-                      className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black"
-                      size="lg"
-                    >
-                      <UploadIcon className="mr-2 h-4 w-4" />
-                      Analyze Document
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Centered Header for Markdown/PDF upload */}
-          <div className="mb-4 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
-            <h2 className="text-xl mb-2 text-muted-foreground">Or Store Document for Later</h2>
-          </div>
-
-          <div className="space-y-6 max-w-3xl mx-auto mb-12">
-            {!selectedMdFile ? (
-              <div
-                className={cn(
-                  "p-8 text-center transition-all duration-300 border-2 border-dotted border-slate-300 dark:border-slate-700 rounded-sm cursor-pointer group hover:border-slate-400 dark:hover:border-slate-600 hover:shadow-md backdrop-blur-sm",
-                  isMdDragging && "bg-primary/10 border-primary scale-105 shadow-lg backdrop-blur-md"
-                )}
-                style={{ backgroundColor: isMdDragging ? undefined : 'hsl(var(--sidebar-bg))' }}
-                onDrop={handleMdDrop}
-                onDragOver={handleMdDragOver}
-                onDragLeave={handleMdDragLeave}
-                onClick={() => mdFileInputRef.current?.click()}
-              >
-                <div className="flex flex-col items-center gap-3">
-                  <div
-                    className={cn(
-                      "p-3 backdrop-blur-sm rounded-lg group-hover:bg-primary/10 transition-colors",
-                      isMdDragging && "bg-primary/20"
+                    {!isAnalyzing && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-600">Ready to analyze</span>
+                      </div>
                     )}
-                    style={{ backgroundColor: isMdDragging ? undefined : 'hsl(var(--sidebar-hover))' }}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              {!isAnalyzing && (
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleAnalyze}
+                    className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black"
+                    size="lg"
                   >
-                    <FileText className={cn(
-                      "h-8 w-8 text-black dark:text-black group-hover:text-primary transition-colors",
-                      isMdDragging && "text-primary"
-                    )} />
-                  </div>
-                  <div>
-                    <h3 className="text-md font-semibold mb-1">
-                      Store Document File
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-1">
-                      Directly upload a .md or .pdf file
-                    </p>
-                  </div>
-                  <input
-                    ref={mdFileInputRef}
-                    type="file"
-                    accept=".md,.markdown,.pdf"
-                    onChange={handleMdFileInputChange}
-                    className="hidden"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div
-                  className="p-5 transition-all duration-300 border-2 border-slate-300 dark:border-slate-500 rounded-sm backdrop-blur-sm"
-                  style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg">
-                      <FileText className="h-6 w-6 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold truncate">{selectedMdFile.name}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {formatFileSize(selectedMdFile.size)} • {selectedMdFile.name.toLowerCase().endsWith(".pdf") ? "PDF" : "Markdown"}
-                          </p>
-                        </div>
-                        {!isUploadingMd && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleRemoveMdFile}
-                            className="shrink-0"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">Document Title</label>
-                          <input
-                            type="text"
-                            value={mdFileTitle}
-                            onChange={(e) => setMdFileTitle(e.target.value)}
-                            disabled={isUploadingMd}
-                            className="w-full text-sm p-2 rounded border focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="Document title"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">Commit Message (Optional)</label>
-                          <input
-                            type="text"
-                            value={mdFileMessage}
-                            onChange={(e) => setMdFileMessage(e.target.value)}
-                            disabled={isUploadingMd}
-                            className="w-full text-sm p-2 rounded border focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="What changed?"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                {!isUploadingMd ? (
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={handleUploadMd}
-                      className="flex-1"
-                      size="lg"
-                    >
-                      <UploadIcon className="mr-2 h-4 w-4" />
-                      Upload to Storage
-                    </Button>
-                  </div>
-                ) : (
-                  <Button disabled className="w-full" size="lg">
-                    <UploadIcon className="mr-2 h-4 w-4 animate-bounce" />
-                    Uploading...
+                    <UploadIcon className="mr-2 h-4 w-4" />
+                    Analyze Document
                   </Button>
-                )}
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Learn More Collapsible Section */}
-          {(!selectedAnalysisFile && !selectedMdFile) && (
+          {!selectedFile && (
             <div className="text-center">
               <button
                 onClick={() => setIsLearnMoreOpen(!isLearnMoreOpen)}
@@ -480,21 +287,22 @@ export function Upload() {
                   <ChevronDown className="h-3.5 w-3.5" />
                 )}
               </button>
-
+              
               {isLearnMoreOpen && (
-                <Card className="my-6 max-h-[65vh] overflow-hidden text-sm text-gray-500 backdrop-blur-sm">
-                  <CardContent className="pt-6 space-y-3 text-left overflow-y-auto max-h-[55vh] pr-4">
-                    <p>
-                      Checkmate is the latest in RegTech solutions, combining the best of AI and traditional IT to revolutionize regulatory compliance. We save companies tens of thousands of hours and hundreds of thousands of euros.
-                    </p>
-                    <p>
-                      Upload your document and our hybrid AI engine analyzes it, generating actionable compliance reports in minutes.
-                    </p>
-                  </CardContent>
+                <Card className="my-6 max-h-[65vh] overflow-hidden text-sm text-gray-500">
+                   <CardContent className="pt-6 space-y-3 text-left overflow-y-auto max-h-[55vh] pr-4">
+                     <p>
+                       Checkmate is the latest in RegTech solutions, combining the best of AI and traditional IT to revolutionize regulatory compliance. We save companies tens of thousands of hours and hundreds of thousands of euros.
+                     </p>
+                     <p>
+                       Upload your document and our hybrid AI engine analyzes it, generating actionable compliance reports in minutes.
+                     </p>
+                   </CardContent>
                 </Card>
               )}
             </div>
           )}
+          </div>
         </div>
       )}
     </div>

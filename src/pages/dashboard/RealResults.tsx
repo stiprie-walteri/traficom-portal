@@ -52,6 +52,8 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
   }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
   const hasProcessed = useRef(false)
 
+  const [versionErrorMessage, setVersionErrorMessage] = useState<string | null>(null)
+
   // Versions state
   const [versions, setVersions] = useState<DocumentVersion[]>([])
   const [currentVersionNo, setCurrentVersionNo] = useState<number | null>(null)
@@ -229,6 +231,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
     if (!documentId || !organizationId) return
 
     setIsLoading(true)
+    setVersionErrorMessage(null)
     setCurrentVersionNo(versionNo)
 
     try {
@@ -246,7 +249,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
 
     } catch (err) {
       console.error("Error fetching version content:", err)
-      alert("Failed to load version content.")
+      setVersionErrorMessage("Failed to load version content. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -518,6 +521,23 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
         </div>
       ) : (
         <>
+          {versionErrorMessage && (
+            <div className="max-w-4xl mx-auto mb-4">
+              <div className="flex items-start justify-between gap-3 rounded-sm border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 shadow-sm">
+                <p className="leading-relaxed">{versionErrorMessage}</p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setVersionErrorMessage(null)
+                  }}
+                  className="h-6 w-6 shrink-0 inline-flex items-center justify-center rounded-sm text-red-500 hover:text-red-700 hover:bg-red-100"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
           {issues.length > 0 && (
             <button
               onClick={(e) => {
