@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from "react"
+import { useState, useRef, useMemo, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -39,25 +39,24 @@ export function Upload() {
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set())
 
   const [isLearnMoreOpen, setIsLearnMoreOpen] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const { user } = useUser()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
-  const refreshDocuments = () => {
+  const refreshDocuments = useCallback(() => {
     if (user?.id) {
       storageService.listDocuments(user.id)
         .then(res => setAvailableDocuments(res.items))
         .catch(console.error)
     }
-  }
+  }, [user?.id, storageService])
 
   // Fetch available documents for the dropdown
   useEffect(() => {
     refreshDocuments()
-  }, [user?.id, storageService])
+  }, [refreshDocuments])
 
   // Accepted types - restricted to PDF only
   const storageAcceptedTypes = ["application/pdf"]
