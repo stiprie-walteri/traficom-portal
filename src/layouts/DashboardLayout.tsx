@@ -24,7 +24,6 @@ export function DashboardLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const [documents, setDocuments] = useState<StoredDocument[]>([])
-  const [isDeleting, setIsDeleting] = useState(false)
 
   // Function to refresh documents from the source
   const refreshDocuments = useCallback(() => {
@@ -81,7 +80,6 @@ export function DashboardLayout() {
     })
     if (!ok) return
     
-    setIsDeleting(true)
     try {
       await storageService.deleteDocument(user.id, docId)
       window.dispatchEvent(new Event('documentListUpdated'))
@@ -99,8 +97,6 @@ export function DashboardLayout() {
         title: "Delete failed",
         description: "Failed to delete document. Please try again.",
       })
-    } finally {
-      setIsDeleting(false)
     }
   }
 
