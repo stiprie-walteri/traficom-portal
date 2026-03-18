@@ -4,28 +4,35 @@ import { PanelRightClose } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { mockDocuments, type Document } from "@/lib/mockData"
 import { cn } from "@/lib/utils"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import logoSvg from "@/assets/logo.svg"
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
+import { useApiClient } from "@/hooks/useApiClient"
+import { DocumentStorageService, StoredDocument } from "@/lib/documentStorageService"
 
 export function DashboardLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { isSignedIn, isLoaded } = useAuth()
   const { user } = useUser()
+  const apiClient = useApiClient()
+  const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
+  
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [documents, setDocuments] = useState<Document[]>(() => [...mockDocuments])
+  const [documents, setDocuments] = useState<StoredDocument[]>([])
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Function to refresh documents from the source
   const refreshDocuments = useCallback(() => {
-    // Always read the latest state from mockDocuments to ensure we have all documents
-    const currentDocuments = [...mockDocuments]
-    setDocuments(currentDocuments)
-  }, [])
+    if (user?.id) {
+      storageService.listDocuments(user.id)
+        .then(res => setDocuments(res.items))
+        .catch(console.error)
+    }
+  }, [user?.id, storageService])
 
   // Refresh documents list when location changes
   useEffect(() => {
@@ -65,10 +72,21 @@ export function DashboardLayout() {
     setPendingDeleteId(docId)
   }
 
-  const confirmDeleteDocument = () => {
-    if (!pendingDeleteId) return
-    // Placeholder: backend delete not wired yet
-    setPendingDeleteId(null)
+  const confirmDeleteDocument = async () => {
+    if (!pendingDeleteId || !user?.id) return
+    
+    setIsDeleting(true)
+    try {
+      await storageService.deleteDocument(user.id, pendingDeleteId)
+      window.dispatchEvent(new Event('documentListUpdated'))
+      refreshDocuments()
+      setPendingDeleteId(null)
+    } catch (err) {
+      console.error("Delete failed:", err)
+      alert("Failed to delete document. Please try again.")
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const cancelDeleteDocument = () => {
@@ -215,10 +233,9 @@ export function DashboardLayout() {
                     {/* Document List */}
                     <div className="max-h-[400px] overflow-y-auto space-y-0.5 pl-3">
                       {documents.map((doc) => {
-                        // Special handling for document 5 to link to example-1
-                        const docPath = doc.id === "5" ? "/dashboard/example-1" : `/dashboard/document/${doc.id}`
+                        const docPath = `/dashboard/document/${doc.document_id}`
                         return (
-                          <div key={doc.id} className="group relative">
+                          <div key={doc.document_id} className="group relative">
                             <Link to={docPath} onClick={handleNavClick}>
                               <div
                                 className={cn(
@@ -230,37 +247,17 @@ export function DashboardLayout() {
                               >
                                 <div className="flex items-start justify-between gap-2 mb-1 overflow-hidden">
                                   <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
-                                    {doc.title}
+                                    {doc.title || "Untitled"}
                                   </h3>
-                                  {doc.complianceScore !== undefined ? (
-                                    <span
-                                      className={cn(
-                                        "text-xs font-bold flex-shrink-0",
-                                        doc.complianceScore >= 90
-                                          ? "text-green-600"
-                                          : doc.complianceScore >= 75
-                                            ? "text-yellow-600"
-                                            : "text-red-600"
-                                      )}
-                                    >
-                                      {doc.complianceScore}%
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
-                                      -%
-                                    </span>
-                                  )}
+                                  <span className="text-xs font-bold flex-shrink-0 text-muted-foreground">
+                                    -%
+                                  </span>
                                 </div>
                                 <div className="flex items-center justify-between overflow-hidden">
                                   <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-                                    {new Date(doc.uploadDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                    {new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                   </span>
                                   <div className="flex items-center gap-1">
-                                    {doc.status === "analyzing" && (
-                                      <span className="text-xs text-muted-foreground italic whitespace-nowrap flex-shrink-0">
-                                        Analyzing...
-                                      </span>
-                                    )}
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -268,7 +265,7 @@ export function DashboardLayout() {
                                       onClick={(e) => {
                                         e.preventDefault()
                                         e.stopPropagation()
-                                        handleDeleteDocument(doc.id)
+                                        handleDeleteDocument(doc.document_id)
                                       }}
                                       title="Delete document"
                                       aria-label="Delete document"
@@ -415,9 +412,10 @@ export function DashboardLayout() {
                 size="sm"
                 className="bg-red-600 hover:bg-red-700 text-white"
                 onClick={confirmDeleteDocument}
+                disabled={isDeleting}
               >
                 <Trash2 className="h-3 w-3 mr-1" />
-                Delete
+                {isDeleting ? "Deleting..." : "Delete"}
               </Button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,6 @@ import { RealResults } from "./RealResults"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService } from "@/lib/documentStorageService"
-import { useMemo } from "react"
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 
 export function DocumentView() {
@@ -19,7 +18,14 @@ export function DocumentView() {
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
-  const [analysis] = useState(() => getMockAnalysis(id || "1"))
+  const [analysis] = useState(() => {
+    try {
+      return getMockAnalysis(id || "1")
+    } catch {
+      // If document is not found in mocks, return null
+      return null
+    }
+  })
   const [selectedFlaw, setSelectedFlaw] = useState<string | null>(null)
 
   const [isLoading, setIsLoading] = useState(true)
@@ -115,7 +121,7 @@ export function DocumentView() {
     }
   }
 
-  const summaryCard = (
+  const summaryCard = analysis ? (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between mb-2">
@@ -178,7 +184,17 @@ export function DocumentView() {
         <p className="text-sm text-muted-foreground leading-relaxed">{analysis.summary}</p>
       </CardContent>
     </Card>
-  )
+  ) : null
+
+  if (!analysis) {
+    return (
+      <div className="container mx-auto px-6 py-12 text-center">
+        <h2 className="text-2xl font-bold mb-4">No Analysis Data</h2>
+        <p className="text-muted-foreground">This document has no analysis results available yet.</p>
+        <Button onClick={() => window.history.back()} className="mt-6">Go Back</Button>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full">
