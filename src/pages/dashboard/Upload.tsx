@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, StoredDocument, EvaluateTaskResult } from "@/lib/documentStorageService"
+import { useAppAlert } from "@/hooks/useAppAlert"
 
 export function Upload() {
   // New state for document storage upload
@@ -28,7 +29,6 @@ export function Upload() {
 
   // Delete state
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   // Evaluate state
   const [evalDocId, setEvalDocId] = useState("")
@@ -42,6 +42,7 @@ export function Upload() {
   const navigate = useNavigate()
 
   const { user } = useUser()
+  const { toast, confirm } = useAppAlert()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
@@ -69,7 +70,11 @@ export function Upload() {
         setDocTitle(file.name.replace(/\.[^/.]+$/, ""))
       }
     } else {
-      alert("Please select a PDF document (.pdf)")
+      toast({
+        variant: "warning",
+        title: "Invalid file type",
+        description: "Please select a PDF document (.pdf).",
+      })
     }
   }
 
@@ -128,14 +133,22 @@ export function Upload() {
 
       // Clear form
       handleRemoveFile()
-      alert("Document uploaded successfully!")
+      toast({
+        variant: "success",
+        title: "Uploaded",
+        description: "Document uploaded successfully.",
+      })
 
       // Navigate to it
       navigate(`/dashboard/document/${result.document_id}`)
 
     } catch (error) {
       console.error("Error uploading document:", error)
-      alert("Failed to upload document. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: "Failed to upload document. Please try again.",
+      })
     } finally {
       setIsUploading(false)
     }
@@ -143,11 +156,15 @@ export function Upload() {
 
   // --- Delete Handler ---
   const handleDeleteDocument = async (doc: StoredDocument) => {
-    if (confirmDeleteId !== doc.document_id) {
-      setConfirmDeleteId(doc.document_id)
-      return
-    }
-    setConfirmDeleteId(null)
+    const ok = await confirm({
+      title: "Delete this document?",
+      description: "This action cannot be undone. The document will be removed from your list.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      destructive: true,
+    })
+    if (!ok) return
+
     setDeletingDocId(doc.document_id)
     try {
       await storageService.deleteDocument(doc.organization_id, doc.document_id)
@@ -155,7 +172,11 @@ export function Upload() {
       refreshDocuments()
     } catch (err) {
       console.error("Delete failed:", err)
-      alert("Failed to delete document. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: "Failed to delete document. Please try again.",
+      })
     } finally {
       setDeletingDocId(null)
     }
@@ -175,14 +196,22 @@ export function Upload() {
     const selectedDoc = availableDocuments.find(d => d.document_id === evalDocId)
     const orgId = selectedDoc?.organization_id || user?.id
     if (!orgId || !evalDocId || !evalVersionNo) {
-      alert("Please select a document and version.")
+      toast({
+        variant: "warning",
+        title: "Missing info",
+        description: "Please select a document and version.",
+      })
       return
     }
     const tasks = evalTaskGroups
       .map(g => g.filter(s => s.trim()))
       .filter(g => g.length > 0)
     if (tasks.length === 0) {
-      alert("Please add at least one task item.")
+      toast({
+        variant: "warning",
+        title: "No tasks",
+        description: "Please add at least one task item.",
+      })
       return
     }
     setIsEvaluating(true)
@@ -192,7 +221,11 @@ export function Upload() {
       setEvalResults(res.results)
     } catch (err) {
       console.error("Evaluation failed:", err)
-      alert("Evaluation failed. See console for details.")
+      toast({
+        variant: "destructive",
+        title: "Evaluation failed",
+        description: "Evaluation failed. See console for details.",
+      })
     } finally {
       setIsEvaluating(false)
     }
@@ -397,7 +430,11 @@ export function Upload() {
                   const orgIdToUse = selectedDoc?.organization_id || user?.id;
 
                   if (!orgIdToUse || !queryDocId || !queryVersionNo) {
-                    alert("Please select a document and enter a version number.");
+                    toast({
+                      variant: "warning",
+                      title: "Missing info",
+                      description: "Please select a document and enter a version number.",
+                    });
                     return;
                   }
 
@@ -410,7 +447,11 @@ export function Upload() {
                     setQueryChunksResult(result.chunks ? result.chunks : result);
                   } catch (error) {
                     console.error("Error querying chunks:", error);
-                    alert("Failed to query chunks. See console for details.");
+                    toast({
+                      variant: "destructive",
+                      title: "Query failed",
+                      description: "Failed to query chunks. See console for details.",
+                    });
                   } finally {
                     setIsQueryingChunks(false);
                   }
@@ -463,34 +504,14 @@ export function Upload() {
                       {new Date(doc.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  {confirmDeleteId === doc.document_id ? (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-destructive font-medium">Are you sure?</span>
-                      <button
-                        className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors font-medium"
-                        onClick={() => handleDeleteDocument(doc)}
-                        disabled={deletingDocId === doc.document_id}
-                      >
-                        {deletingDocId === doc.document_id ? "Deleting..." : "Delete"}
-                      </button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setConfirmDeleteId(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <button
-                      className="p-1.5 rounded text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-40"
-                      onClick={() => handleDeleteDocument(doc)}
-                      disabled={!!deletingDocId}
-                      title="Delete document"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    className="p-1.5 rounded text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-40"
+                    onClick={() => void handleDeleteDocument(doc)}
+                    disabled={!!deletingDocId}
+                    title="Delete document"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>

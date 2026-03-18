@@ -10,19 +10,20 @@ import logoSvg from "@/assets/logo.svg"
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, StoredDocument } from "@/lib/documentStorageService"
+import { useAppAlert } from "@/hooks/useAppAlert"
 
 export function DashboardLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { isSignedIn, isLoaded } = useAuth()
   const { user } = useUser()
+  const { toast, confirm } = useAppAlert()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
   
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const [documents, setDocuments] = useState<StoredDocument[]>([])
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Function to refresh documents from the source
@@ -68,29 +69,39 @@ export function DashboardLayout() {
     setIsMobileOpen(false)
   }
 
-  const handleDeleteDocument = (docId: string) => {
-    setPendingDeleteId(docId)
-  }
+  const handleDeleteDocument = async (docId: string) => {
+    if (!user?.id) return
 
-  const confirmDeleteDocument = async () => {
-    if (!pendingDeleteId || !user?.id) return
+    const ok = await confirm({
+      title: "Delete this document?",
+      description: "This action cannot be undone. The document will be removed from your list.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      destructive: true,
+    })
+    if (!ok) return
     
     setIsDeleting(true)
     try {
-      await storageService.deleteDocument(user.id, pendingDeleteId)
+      await storageService.deleteDocument(user.id, docId)
       window.dispatchEvent(new Event('documentListUpdated'))
       refreshDocuments()
-      setPendingDeleteId(null)
+
+      toast({
+        variant: "success",
+        title: "Deleted",
+        description: "Document deleted successfully.",
+      })
     } catch (err) {
       console.error("Delete failed:", err)
-      alert("Failed to delete document. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: "Failed to delete document. Please try again.",
+      })
     } finally {
       setIsDeleting(false)
     }
-  }
-
-  const cancelDeleteDocument = () => {
-    setPendingDeleteId(null)
   }
 
   return (
@@ -389,38 +400,6 @@ export function DashboardLayout() {
         <Outlet />
       </main>
 
-      {pendingDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-sm border border-slate-300 bg-white px-5 py-4 shadow-lg">
-            <p className="text-sm font-semibold text-slate-900 mb-1">
-              Delete this document (coming soon)
-            </p>
-            <p className="text-xs text-slate-700 mb-4">
-              The delete action is not yet connected to the backend. For now, this dialog is only a visual preview.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100"
-                onClick={cancelDeleteDocument}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="bg-red-600 hover:bg-red-700 text-white"
-                onClick={confirmDeleteDocument}
-                disabled={isDeleting}
-              >
-                <Trash2 className="h-3 w-3 mr-1" />
-                {isDeleting ? "Deleting..." : "Delete"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
