@@ -168,7 +168,7 @@ export function DashboardLayout() {
                   )}
                 >
                   <Upload className="h-4 w-4 flex-shrink-0" />
-                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Upload Document</span>}
+                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Document Management</span>}
                 </div>
               </Link>
             )}

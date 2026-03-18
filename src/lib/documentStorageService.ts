@@ -44,6 +44,52 @@ export interface GetDocumentResponse {
     content_md: string;
 }
 
+export interface DocumentChunk {
+    id: string;
+    organization_id: string;
+    document_id: string;
+    version_id: string;
+    chunk_level: number;
+    title: string;
+    start_page: number;
+    end_page: number;
+    text_content: string;
+    created_at: string;
+}
+
+export interface DocumentChunksResponse {
+    organization_id: string;
+    document_id: string;
+    version_id: string;
+    chunks: DocumentChunk[];
+}
+
+export interface DeleteDocumentResponse {
+    document_id: string;
+    organization_id: string;
+    chunks_deleted: number;
+    versions_deleted: number;
+    objects_deleted: number;
+    objects_failed: number;
+}
+
+export interface EvaluateTasksRequest {
+    tasks: string[][];
+}
+
+export interface EvaluateTaskResult {
+    task: string[];
+    exists: boolean;
+    explanation: string;
+}
+
+export interface EvaluateTasksResponse {
+    organization_id: string;
+    document_id: string;
+    version_id: string;
+    results: EvaluateTaskResult[];
+}
+
 export interface UploadDocumentParams {
     organizationId: string;
     actorUserId: string;
@@ -153,6 +199,61 @@ export class DocumentStorageService {
         const response = await this.apiClient.get<GetDocumentResponse>(
             `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}`,
             { params }
+        );
+        return response.data;
+    }
+
+    /**
+     * Returns a list of chunks for a document version.
+     * GET /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/chunks
+     */
+    async getChunks(
+        organizationId: string,
+        documentId: string,
+        versionNo: number
+    ): Promise<DocumentChunksResponse> {
+        const response = await this.apiClient.get<DocumentChunksResponse>(
+            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/chunks`
+        );
+        return response.data;
+    }
+
+    /**
+     * Deletes a document and all its chunks, versions, and MinIO objects atomically.
+     * DELETE /api/orgs/{organization_id}/documents/{document_id}
+     *
+     * Returns 403 if the caller is not the document owner.
+     * Returns 404 if the document does not exist.
+     * `objects_failed` > 0 means some raw files could not be purged from MinIO
+     * (the DB records are always deleted regardless).
+     */
+    async deleteDocument(
+        organizationId: string,
+        documentId: string
+    ): Promise<DeleteDocumentResponse> {
+        const response = await this.apiClient.delete<DeleteDocumentResponse>(
+            `/orgs/${organizationId}/documents/${documentId}`
+        );
+        return response.data;
+    }
+
+    /**
+     * Runs the AI agent against a specific document version to evaluate task coverage.
+     * POST /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/evaluate
+     *
+     * Each inner array in `tasks` is a "task group" — the agent evaluates all items
+     * in that group together as a single check.
+     */
+    async evaluateDocument(
+        organizationId: string,
+        documentId: string,
+        versionNo: number,
+        tasks: string[][]
+    ): Promise<EvaluateTasksResponse> {
+        const body: EvaluateTasksRequest = { tasks };
+        const response = await this.apiClient.post<EvaluateTasksResponse>(
+            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/evaluate`,
+            body
         );
         return response.data;
     }
