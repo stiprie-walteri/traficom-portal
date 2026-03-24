@@ -31,14 +31,23 @@ EOF
   printf '    index index.html;\n\n'
   printf '    gzip on;\n'
   printf '    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;\n\n'
-  printf '    location %s {\n' "$BASE_PATH"
-  printf '        try_files $uri $uri/ /index.html;\n'
-  printf '    }\n'
-  if [ "$BASE_PATH" != "/" ]; then
-    printf '\n    location / {\n'
+  if [ "$BASE_PATH" = "/" ]; then
+    printf '    location / {\n'
+    printf '        try_files $uri $uri/ /index.html;\n'
+    printf '    }\n'
+  else
+    printf '    location = %s {\n' "$BASE_PATH"
+    printf '        return 301 %s/;\n' "$BASE_PATH"
+    printf '    }\n\n'
+    printf '    location ^~ %s/ {\n' "$BASE_PATH"
+    printf '        rewrite ^%s/(.*)$ /$1 break;\n' "$BASE_PATH"
+    printf '        try_files $uri $uri/ /index.html;\n'
+    printf '    }\n\n'
+    printf '    location / {\n'
     printf '        try_files $uri $uri/ =404;\n'
     printf '    }\n'
   fi
+
   printf '\n    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n'
   printf '        expires 1y;\n'
   printf '        add_header Cache-Control "public, immutable";\n'
