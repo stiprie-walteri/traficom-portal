@@ -21,4 +21,5 @@ function getEnv(key: string): string {
 export const env = {
     VITE_CLERK_PUBLISHABLE_KEY: getEnv('VITE_CLERK_PUBLISHABLE_KEY'),
     VITE_API_BASE_URL: getEnv('VITE_API_BASE_URL'),
+    BASE_PATH: getEnv('BASE_PATH') || '/',
 }

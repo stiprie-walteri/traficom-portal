@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { MainLayout } from "@/layouts/MainLayout"
 import { LandingPage } from "@/pages/LandingPage"
+import { env } from "@/lib/env"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
@@ -12,7 +13,7 @@ import { UnauthorizedPage } from "@/pages/UnauthorizedPage"
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={env.BASE_PATH}>
       <Routes>
         {/* Public Landing Page */}
         <Route path="/" element={<MainLayout><LandingPage /></MainLayout>} />

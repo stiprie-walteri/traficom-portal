@@ -25,30 +25,6 @@ FROM nginx:alpine AS production
 # Install curl for healthcheck
 RUN apk add --no-cache curl
 
-# Copy custom nginx config
-COPY <<EOF /etc/nginx/conf.d/default.conf
-server {
-    listen 3000;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # Enable gzip compression
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-EOF
-
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
@@ -61,7 +37,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3000/ || exit 1
+    CMD curl -f http://localhost:3000/config.js || exit 1
 
 # Start via entrypoint (generates config.js from env vars, then starts nginx)
 CMD ["/docker-entrypoint.sh"]
