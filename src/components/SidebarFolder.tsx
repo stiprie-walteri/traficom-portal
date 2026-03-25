@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Trash2, Pencil } from "lucide-react"
 import { useDroppable } from "@dnd-kit/core"
 import { cn } from "@/lib/utils"
@@ -31,7 +31,6 @@ export function SidebarFolder({
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(folderName)
   const inputRef = useRef<HTMLInputElement>(null)
-  const location = useLocation()
 
   const { isOver, setNodeRef } = useDroppable({ id: folderId })
 
