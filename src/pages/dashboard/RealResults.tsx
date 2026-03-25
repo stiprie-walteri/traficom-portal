@@ -213,8 +213,8 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
       setIsLoadingVersions(true)
       try {
         const response = await storageService.listVersions(organizationId, documentId)
-        setVersions(response.items)
-        if (response.items.length > 0 && currentVersionNo === null) {
+        setVersions(response?.items || [])
+        if (response?.items?.length > 0 && currentVersionNo === null) {
           setCurrentVersionNo(response.items[0].version_no)
         }
       } catch (err) {

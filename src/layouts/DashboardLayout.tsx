@@ -29,7 +29,7 @@ export function DashboardLayout() {
   const refreshDocuments = useCallback(() => {
     if (user?.id) {
       storageService.listDocuments(user.id)
-        .then(res => setDocuments(res.items))
+        .then(res => setDocuments(res?.items || []))
         .catch(console.error)
     }
   }, [user?.id, storageService])

@@ -49,7 +49,7 @@ export function Upload() {
   const refreshDocuments = useCallback(() => {
     if (user?.id) {
       storageService.listDocuments(user.id)
-        .then(res => setAvailableDocuments(res.items))
+        .then(res => setAvailableDocuments(res?.items || []))
         .catch(console.error)
     }
   }, [user?.id, storageService])
