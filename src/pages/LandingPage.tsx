@@ -4,6 +4,7 @@ import { FileStack, FileUp, FileText } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import checkMateImg from "@/assets/CheckMate.png"
 import { useAuth, SignInButton } from "@clerk/clerk-react"
+import { env } from "@/lib/env"
 
 interface FallingDocument {
   id: number
@@ -89,7 +90,7 @@ export function LandingPage() {
                   Log In
                 </Button>
               ) : (
-                <SignInButton mode="modal" forceRedirectUrl="/dashboard">
+                <SignInButton mode="modal" forceRedirectUrl={`${env.BASE_PATH.endsWith('/') ? env.BASE_PATH.slice(0, -1) : env.BASE_PATH}/dashboard`}>
                   <Button
                     variant="outline"
                     className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
