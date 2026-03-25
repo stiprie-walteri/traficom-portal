@@ -88,7 +88,7 @@ const parseLegislation = async (): Promise<ParseResult> => {
     const form = new FormData();
     form.append("file", file as Blob, "file");
 
-    const response = await apiClient.get<RawApiResponse>("/api/parse-legislation-mock",{
+    const response = await apiClient.get<RawApiResponse>("/parse-legislation-mock",{
         timeout: 3000000 
     });
     const res: RawApiResponse = response.data ?? {};
@@ -190,7 +190,7 @@ const parseReal = async (file: File): Promise<ParseResult> => {
     const form = new FormData();
     form.append("file", file, file.name);
 
-    const startResponse = await apiClient.post<{ job_id: string; status: string }>("/api/parse-legislation", form, {
+    const startResponse = await apiClient.post<{ job_id: string; status: string }>("/parse-legislation", form, {
       timeout: 60000, // 1 minute for initial upload
     });
 
@@ -207,7 +207,7 @@ const parseReal = async (file: File): Promise<ParseResult> => {
       }
 
       // Poll the status endpoint
-      const statusResponse = await apiClient.get<JobStatusResponse>(`/api/parse-legislation-status/${job_id}`, {
+      const statusResponse = await apiClient.get<JobStatusResponse>(`/parse-legislation-status/${job_id}`, {
         timeout: 30000, // 30 seconds per poll
       });
 
