@@ -12,16 +12,26 @@ export interface DocumentVersion {
     created_by: string;
     message?: string;
     parent_version_id?: string;
+    compliance_result?: object | null;
 }
 
 export interface StoredDocument {
     document_id: string;
     organization_id: string;
     title: string;
+    folder_id?: string | null;
     created_at: string;
     created_by: string;
     updated_at: string;
     current_version?: DocumentVersion;
+}
+
+export interface FolderItem {
+    id: string;
+    organization_id: string;
+    name: string;
+    created_at: string;
+    created_by: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -219,13 +229,24 @@ export class DocumentStorageService {
     }
 
     /**
+     * Persists a compliance analysis result for a specific document version.
+     * POST /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/compliance
+     */
+    async saveComplianceResult(
+        organizationId: string,
+        documentId: string,
+        versionNo: number,
+        result: object
+    ): Promise<void> {
+        await this.apiClient.post(
+            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/compliance`,
+            { result }
+        );
+    }
+
+    /**
      * Deletes a document and all its chunks, versions, and MinIO objects atomically.
      * DELETE /api/orgs/{organization_id}/documents/{document_id}
-     *
-     * Returns 403 if the caller is not the document owner.
-     * Returns 404 if the document does not exist.
-     * `objects_failed` > 0 means some raw files could not be purged from MinIO
-     * (the DB records are always deleted regardless).
      */
     async deleteDocument(
         organizationId: string,
@@ -240,9 +261,6 @@ export class DocumentStorageService {
     /**
      * Runs the AI agent against a specific document version to evaluate task coverage.
      * POST /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/evaluate
-     *
-     * Each inner array in `tasks` is a "task group" — the agent evaluates all items
-     * in that group together as a single check.
      */
     async evaluateDocument(
         organizationId: string,
@@ -256,5 +274,43 @@ export class DocumentStorageService {
             body
         );
         return response.data;
+    }
+
+    // ------------------------------------------------------------------
+    // Folder management
+    // ------------------------------------------------------------------
+
+    async listFolders(organizationId: string): Promise<FolderItem[]> {
+        const response = await this.apiClient.get<FolderItem[]>(
+            `/orgs/${organizationId}/folders`
+        );
+        return response.data;
+    }
+
+    async createFolder(organizationId: string, name: string): Promise<FolderItem> {
+        const response = await this.apiClient.post<FolderItem>(
+            `/orgs/${organizationId}/folders`,
+            { name }
+        );
+        return response.data;
+    }
+
+    async renameFolder(organizationId: string, folderId: string, name: string): Promise<void> {
+        await this.apiClient.patch(`/orgs/${organizationId}/folders/${folderId}`, { name });
+    }
+
+    async deleteFolder(organizationId: string, folderId: string): Promise<void> {
+        await this.apiClient.delete(`/orgs/${organizationId}/folders/${folderId}`);
+    }
+
+    async moveDocumentToFolder(
+        organizationId: string,
+        documentId: string,
+        folderId: string | null
+    ): Promise<void> {
+        await this.apiClient.patch(
+            `/orgs/${organizationId}/documents/${documentId}/folder`,
+            { folder_id: folderId }
+        );
     }
 }
