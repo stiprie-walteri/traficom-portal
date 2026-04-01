@@ -21,7 +21,8 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: apiTarget,
           changeOrigin: true,
-          secure: false,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
           configure: (proxy) => {
             // Rewrite redirect Location headers so the browser follows them
             // through the dev proxy instead of directly to the backend (CORS).
