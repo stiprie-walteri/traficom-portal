@@ -1,14 +1,27 @@
-import { useState, useRef, useMemo } from "react"
+import { useState, useRef, useMemo, useCallback, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Upload as UploadIcon, File, X, FileText, ChevronDown, ChevronUp, AlertCircle, CheckCircle2 } from "lucide-react"
+import {
+  Upload as UploadIcon,
+  File,
+  X,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  CheckCircle2,
+  Trash2,
+  Plus,
+  Bot,
+  ChevronRight
+} from "lucide-react"
 import { InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
 import documentService from "@/lib/documentService"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService } from "@/lib/documentStorageService"
+import { DocumentStorageService, StoredDocument, EvaluateTaskResult } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
 
 type UploadStep = "idle" | "uploading" | "analysing" | "saving" | "done" | "error"
@@ -32,13 +45,59 @@ export function Upload() {
   const [isLearnMoreOpen, setIsLearnMoreOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // New state for querying chunks
+  const [queryDocId, setQueryDocId] = useState("")
+  const [queryVersionNo, setQueryVersionNo] = useState("1")
+  const [isQueryingChunks, setIsQueryingChunks] = useState(false)
+  const [queryChunksResult, setQueryChunksResult] = useState<any>(null)
+  const [availableDocuments, setAvailableDocuments] = useState<StoredDocument[]>([])
+
+  // Delete state
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
+
+  // Evaluate state
+  const [evalDocId, setEvalDocId] = useState("")
+  const [evalVersionNo, setEvalVersionNo] = useState("1")
+  const [evalTaskGroups, setEvalTaskGroups] = useState<string[][]>([[""]])
+  const [isEvaluating, setIsEvaluating] = useState(false)
+  const [evalResults, setEvalResults] = useState<EvaluateTaskResult[] | null>(null)
+  const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set())
+  const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+
   const navigate = useNavigate()
   const { user } = useUser()
   const { toast } = useAppAlert()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
-  const isProcessing = step === "uploading" || step === "analysing" || step === "saving"
+  const isProcessing = useMemo(() =>
+    step === "uploading" || step === "analysing" || step === "saving" || isQueryingChunks || isEvaluating || !!deletingDocId,
+    [step, isQueryingChunks, isEvaluating, deletingDocId]
+  )
+
+  const refreshDocuments = useCallback(() => {
+    if (user?.id) {
+      storageService.listDocuments(user.id)
+        .then(res => setAvailableDocuments(res?.items || []))
+        .catch(console.error)
+    }
+  }, [user?.id, storageService])
+
+  // Fetch available documents for the dropdown
+  useEffect(() => {
+    refreshDocuments()
+  }, [refreshDocuments])
+
+  // Fetch templates for evaluation
+  useEffect(() => {
+    storageService.getTemplates()
+      .then(res => setTemplates(res?.templates || []))
+      .catch((err) => {
+        console.error('Failed to load templates:', err)
+        toast({ variant: 'destructive', title: 'Templates unavailable', description: 'Could not load evaluation templates from the server.' })
+      })
+  }, [storageService])
 
   const handleFileSelect = (file: File) => {
     if (file.type === "application/pdf") {
@@ -63,6 +122,73 @@ export function Upload() {
     setStep("idle")
     setErrorMsg(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const handleDeleteDocument = async (doc: StoredDocument) => {
+    if (!user?.id || !doc.document_id) return
+    const confirmDelete = confirm(`Are you sure you want to delete ${doc.title || doc.document_id}?`)
+    if (!confirmDelete) return
+
+    setDeletingDocId(doc.document_id)
+    try {
+      await storageService.deleteDocument(user.id, doc.document_id)
+      toast({ title: "Document deleted", description: "Document and all its data were removed." })
+      refreshDocuments()
+      window.dispatchEvent(new Event("documentListUpdated"))
+    } catch (err) {
+      console.error("Failed to delete document:", err)
+      toast({ variant: "destructive", title: "Delete failed", description: "Could not delete document." })
+    } finally {
+      setDeletingDocId(null)
+    }
+  }
+
+  const addTaskGroup = () => setEvalTaskGroups([...evalTaskGroups, [""]])
+  const removeTaskGroup = (gi: number) => setEvalTaskGroups(evalTaskGroups.filter((_, i) => i !== gi))
+  const addItemToGroup = (gi: number) => {
+    const next = [...evalTaskGroups]
+    next[gi] = [...next[gi], ""]
+    setEvalTaskGroups(next)
+  }
+  const removeItemFromGroup = (gi: number, ii: number) => {
+    const next = [...evalTaskGroups]
+    next[gi] = next[gi].filter((_, i) => i !== ii)
+    setEvalTaskGroups(next)
+  }
+  const updateGroupItem = (gi: number, ii: number, val: string) => {
+    const next = [...evalTaskGroups]
+    next[gi] = [...next[gi]]
+    next[gi][ii] = val
+    setEvalTaskGroups(next)
+  }
+
+  const handleEvaluate = async () => {
+    if (!user?.id || !evalDocId || !evalVersionNo) {
+      toast({ variant: "warning", title: "Missing info", description: "Please select a document and version." })
+      return
+    }
+
+    const tasks = evalTaskGroups
+      .map(g => g.filter(s => s.trim()))
+      .filter(g => g.length > 0)
+
+    if (tasks.length === 0 && !selectedTemplateId) {
+      toast({ variant: "warning", title: "No tasks", description: "Please select a template or add at least one task item." })
+      return
+    }
+
+    setIsEvaluating(true)
+    setEvalResults(null)
+    try {
+      const finalTasks = tasks.length > 0 ? tasks : undefined
+      const res = await storageService.evaluateDocument(user.id, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
+      setEvalResults(res.results)
+    } catch (err) {
+      console.error("Evaluation failed:", err)
+      toast({ variant: "destructive", title: "Evaluation failed", description: "The AI agent encountered an error." })
+    } finally {
+      setIsEvaluating(false)
+    }
   }
 
   const handleUpload = async () => {
@@ -287,6 +413,344 @@ export function Upload() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Query Chunks Section */}
+        <div className="mb-4 mt-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
+          <h2 className="text-xl mb-2 text-muted-foreground">Query Document Chunks</h2>
+        </div>
+
+        <div className="space-y-6 max-w-3xl mx-auto mb-12">
+          <div
+            className="p-6 border-2 border-slate-300 dark:border-slate-700 rounded-sm backdrop-blur-sm"
+            style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Select Document</label>
+                <select
+                  className="w-full text-sm p-2 rounded border bg-transparent focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                  onChange={(e) => setQueryDocId(e.target.value)}
+                  value={queryDocId}
+                  disabled={isQueryingChunks || availableDocuments.length === 0}
+                >
+                  <option value="">{availableDocuments.length === 0 ? "Loading documents..." : "Select existing..."}</option>
+                  {availableDocuments.map(doc => (
+                    <option key={doc.document_id} value={doc.document_id}>
+                      {doc.title || doc.document_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Version Number</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={queryVersionNo}
+                  onChange={(e) => setQueryVersionNo(e.target.value)}
+                  disabled={isQueryingChunks}
+                  className="w-full text-sm p-2 rounded border bg-transparent focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="e.g. 1"
+                />
+              </div>
+
+              <Button
+                onClick={async () => {
+                  const selectedDoc = availableDocuments.find(d => d.document_id === queryDocId);
+                  const orgIdToUse = selectedDoc?.organization_id || user?.id;
+
+                  if (!orgIdToUse || !queryDocId || !queryVersionNo) {
+                    toast({
+                      variant: "warning",
+                      title: "Missing info",
+                      description: "Please select a document and enter a version number.",
+                    });
+                    return;
+                  }
+
+                  setIsQueryingChunks(true);
+                  setQueryChunksResult(null);
+
+                  try {
+                    const result = await storageService.getChunks(orgIdToUse, queryDocId, parseInt(queryVersionNo));
+                    // Check if it returned a struct with chunks or is a flat array
+                    setQueryChunksResult(result.chunks ? result.chunks : result);
+                  } catch (error) {
+                    console.error("Error querying chunks:", error);
+                    toast({
+                      variant: "destructive",
+                      title: "Query failed",
+                      description: "Failed to query chunks. See console for details.",
+                    });
+                  } finally {
+                    setIsQueryingChunks(false);
+                  }
+                }}
+                className="w-full mt-4"
+                size="lg"
+                disabled={isQueryingChunks}
+              >
+                {isQueryingChunks ? (
+                  <>
+                    <UploadIcon className="mr-2 h-4 w-4 animate-bounce" />
+                    Querying...
+                  </>
+                ) : (
+                  "Fetch Sections"
+                )}
+              </Button>
+
+              {queryChunksResult && (
+                <div className="mt-6">
+                  <h3 className="text-md font-semibold mb-2 flex items-center justify-between">
+                    <span>Results ({Array.isArray(queryChunksResult) ? queryChunksResult.length : Object.keys(queryChunksResult).length} chunks)</span>
+                    <Button variant="outline" size="sm" onClick={() => setQueryChunksResult(null)}>Clear</Button>
+                  </h3>
+                  <div className="max-h-80 overflow-y-auto rounded border border-border bg-black/50 p-4 text-xs font-mono text-green-400">
+                    <pre className="whitespace-pre-wrap word-break">{JSON.stringify(queryChunksResult, null, 2)}</pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Manage Documents Section */}
+        {availableDocuments.length > 0 && (
+          <>
+            <div className="mb-4 mt-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
+              <h2 className="text-xl mb-2 text-muted-foreground">Manage Documents</h2>
+            </div>
+            <div className="space-y-2 max-w-3xl mx-auto mb-12">
+              {availableDocuments.map(doc => (
+                <div
+                  key={doc.document_id}
+                  className="flex items-center justify-between p-4 border border-slate-300 dark:border-slate-700 rounded-sm"
+                  style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+                >
+                  <div className="flex-1 min-w-0 mr-4">
+                    <p className="text-sm font-medium truncate">{doc.title || "Untitled"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(doc.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    className="p-1.5 rounded text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-40"
+                    onClick={() => void handleDeleteDocument(doc)}
+                    disabled={!!deletingDocId}
+                    title="Delete document"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Evaluate Document Section */}
+        <div className="mb-4 mt-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
+          <h2 className="text-xl mb-2 text-muted-foreground">Evaluate Document Tasks</h2>
+        </div>
+        <div className="space-y-4 max-w-3xl mx-auto mb-12">
+          <div
+            className="p-6 border-2 border-slate-300 dark:border-slate-700 rounded-sm"
+            style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
+          >
+            <div className="space-y-4">
+              {/* Doc & version selectors */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="text-sm font-medium mb-1 block">Document</label>
+                  <select
+                    className="w-full text-sm p-2 rounded border bg-transparent focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                    value={evalDocId}
+                    onChange={e => { setEvalDocId(e.target.value); setEvalResults(null) }}
+                    disabled={isEvaluating || availableDocuments.length === 0}
+                  >
+                    <option value="">{availableDocuments.length === 0 ? "No documents" : "Select document..."}</option>
+                    {availableDocuments.map(doc => (
+                      <option key={doc.document_id} value={doc.document_id}>
+                        {doc.title || doc.document_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Version</label>
+                  <input
+                    type="number" min="1"
+                    value={evalVersionNo}
+                    onChange={e => setEvalVersionNo(e.target.value)}
+                    disabled={isEvaluating}
+                    className="w-full text-sm p-2 rounded border bg-transparent focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Template Selection */}
+              {templates.length > 0 && (
+                <div className="space-y-3">
+                  <label className="text-sm font-medium block">Select Evaluation Template</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {templates.map(tpl => (
+                      <div
+                        key={tpl.id}
+                        onClick={() => setSelectedTemplateId(selectedTemplateId === tpl.id ? null : tpl.id)}
+                        className={cn(
+                          "p-4 border rounded cursor-pointer transition-colors",
+                          selectedTemplateId === tpl.id
+                            ? "border-primary bg-primary/10"
+                            : "border-slate-300 dark:border-slate-600 hover:border-primary/50"
+                        )}
+                      >
+                        <h4 className="font-semibold text-sm mb-1">{tpl.name}</h4>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5 line-clamp-2 leading-relaxed">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Overrides system prompts & rules
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Task groups */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Task Groups</label>
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={addTaskGroup}
+                    disabled={isEvaluating}
+                    className="text-xs h-7"
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Group
+                  </Button>
+                </div>
+                {evalTaskGroups.map((group, gi) => (
+                  <div key={gi} className="border border-dashed border-slate-300 dark:border-slate-600 rounded p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Group {gi + 1}</span>
+                      {evalTaskGroups.length > 1 && (
+                        <button
+                          onClick={() => removeTaskGroup(gi)}
+                          disabled={isEvaluating}
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {group.map((item, ii) => (
+                      <div key={ii} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={item}
+                          onChange={e => updateGroupItem(gi, ii, e.target.value)}
+                          disabled={isEvaluating}
+                          placeholder={`Task item ${ii + 1}...`}
+                          className="flex-1 text-sm p-1.5 rounded border bg-transparent focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        {group.length > 1 && (
+                          <button
+                            onClick={() => removeItemFromGroup(gi, ii)}
+                            disabled={isEvaluating}
+                            className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => addItemToGroup(gi)}
+                      disabled={isEvaluating}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" /> Add item
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {!isEvaluating ? (
+                <Button
+                  onClick={handleEvaluate}
+                  disabled={!evalDocId}
+                  className="w-full"
+                  size="lg"
+                >
+                  <Bot className="mr-2 h-4 w-4" />Run AI Evaluation
+                </Button>
+              ) : (
+                <div className="py-6 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-700 rounded-sm bg-slate-50/50 dark:bg-slate-900/20 backdrop-blur-sm">
+                  <InlineChessLoader duration={8} />
+                  <p className="text-xs font-medium animate-pulse mt-2">AI is evaluating your document tasks...</p>
+                </div>
+              )}
+
+              {/* Results */}
+              {evalResults && (
+                <div className="mt-4 space-y-2">
+                  <h3 className="text-sm font-semibold mb-2">Results ({evalResults.length})</h3>
+                  {evalResults.map((r, i) => (
+                     <div
+                      key={i}
+                      className={cn(
+                        "rounded border transition-colors",
+                        r.exists
+                          ? "border-green-500/40 bg-green-500/5"
+                          : "border-red-500/40 bg-red-500/5"
+                      )}
+                    >
+                      <button
+                        className="w-full flex items-center gap-3 p-3 text-left"
+                        onClick={() =>
+                          setExpandedResults(prev => {
+                            const next = new Set(prev)
+                            if (next.has(i)) {
+                              next.delete(i)
+                            } else {
+                              next.add(i)
+                            }
+                            return next
+                          })
+                        }
+                      >
+                        {r.exists
+                          ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                          : <X className="h-4 w-4 text-red-500 shrink-0" />
+                        }
+                        <span className="text-sm flex-1 font-medium truncate">
+                          {r.task.join(" · ")}
+                        </span>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
+                            expandedResults.has(i) && "rotate-90"
+                          )}
+                        />
+                      </button>
+                      {expandedResults.has(i) && (
+                        <div className="px-3 pb-3">
+                          <p className="text-xs text-muted-foreground leading-relaxed">{r.explanation}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2"
+                    onClick={() => { setEvalResults(null); setExpandedResults(new Set()) }}
+                  >
+                    Clear Results
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Learn More */}

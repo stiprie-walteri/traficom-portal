@@ -84,7 +84,7 @@ export interface DeleteDocumentResponse {
 }
 
 export interface EvaluateTasksRequest {
-    tasks: string[][];
+    tasks?: string[][];
 }
 
 export interface EvaluateTaskResult {
@@ -259,6 +259,17 @@ export class DocumentStorageService {
     }
 
     /**
+     * Fetch available agent templates
+     * GET /api/legislation/templates
+     */
+    async getTemplates(): Promise<{ templates: { id: string; name: string }[] }> {
+        const response = await this.apiClient.get<{ templates: { id: string; name: string }[] }>(
+            `/legislation/templates`
+        );
+        return response.data;
+    }
+
+    /**
      * Runs the AI agent against a specific document version to evaluate task coverage.
      * POST /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/evaluate
      */
@@ -266,12 +277,15 @@ export class DocumentStorageService {
         organizationId: string,
         documentId: string,
         versionNo: number,
-        tasks: string[][]
+        tasks?: string[][],
+        templateId?: string
     ): Promise<EvaluateTasksResponse> {
-        const body: EvaluateTasksRequest = { tasks };
+        const body: EvaluateTasksRequest | Record<string, never> = tasks ? { tasks } : {};
+        const params = templateId ? { template_id: templateId } : undefined;
         const response = await this.apiClient.post<EvaluateTasksResponse>(
-            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/evaluate`,
-            body
+            `/orgs/${organizationId}/documents/${documentId}/versions/{version_no}/evaluate`.replace("{version_no}", versionNo.toString()),
+            body,
+            { params }
         );
         return response.data;
     }
