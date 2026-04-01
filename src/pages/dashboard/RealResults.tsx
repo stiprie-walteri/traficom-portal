@@ -4,9 +4,14 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
-import { ChessLoaderLong } from "@/components/ChessLoader"
+import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
+import { useApiClient } from "@/hooks/useApiClient"
+import { DocumentStorageService, DocumentVersion } from "@/lib/documentStorageService"
+import { History } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useAppAlert } from "@/hooks/useAppAlert"
 
 // warnings and highlights are provided by the backend `issues` list
 
@@ -14,6 +19,8 @@ interface RealResultsProps {
   storedData?: {
     parseResult: ParseResult
     filename: string
+    document_id?: string
+    organization_id?: string
   }
 }
 
@@ -45,21 +52,33 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
     mainNotFoundList: string[];
   }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
   const hasProcessed = useRef(false)
+  const { toast } = useAppAlert()
+
+  // Versions state
+  const [versions, setVersions] = useState<DocumentVersion[]>([])
+  const [currentVersionNo, setCurrentVersionNo] = useState<number | null>(null)
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false)
+
+  const apiClient = useApiClient()
+  const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
+
+  const documentId = storedData?.document_id
+  const organizationId = storedData?.organization_id
 
   const markdownContent = useMemo(() => (
-    <ReactMarkdown 
+    <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeRaw]}
       components={{
-        table: ({ ...props}) => (
+        table: ({ ...props }) => (
           <div className="table-wrapper">
             <table {...props} className="rounded-sm" />
           </div>
         ),
-        pre: ({ ...props}) => (
+        pre: ({ ...props }) => (
           <pre {...props} className="rounded-sm" />
         ),
-        code: ({ ...props}) => (
+        code: ({ ...props }) => (
           <code {...props} className="rounded-sm" />
         ),
       }}
@@ -72,13 +91,13 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
   const load = useCallback(async () => {
     setIsLoading(true)
     setApiError(null)
-    
+
     // Check if data was passed via navigation state or props
     const passedResult = storedData?.parseResult || (location.state?.parseResult as ParseResult | undefined)
     if (passedResult) {
       console.log('Using passed parse result:', passedResult);
       setLastResponse(passedResult)
-      
+
       if (!passedResult.ok) {
         setApiError(passedResult.error ?? 'Failed to parse document')
         setIssues([])
@@ -117,7 +136,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
           const totalMain = newMetrics.mainFound + newMetrics.mainNotFound
           const correctness = totalMain > 0 ? Math.round((newMetrics.mainFound / totalMain) * 100) : 0
 
-          setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
+          setDocumentSummary((prev: any) => ({ ...prev, correctnessScore: correctness }))
         } catch {
           setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
@@ -173,7 +192,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
           const totalMain = newMetrics.mainFound + newMetrics.mainNotFound
           const correctness = totalMain > 0 ? Math.round((newMetrics.mainFound / totalMain) * 100) : 0
 
-          setDocumentSummary(prev => ({ ...prev, correctnessScore: correctness }))
+          setDocumentSummary((prev: any) => ({ ...prev, correctnessScore: correctness }))
         } catch {
           setMetricsCounts({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
         }
@@ -185,7 +204,60 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
       setIsLoading(false)
     }
   }, [location.state, storedData])
-  
+
+  // Fetch versions if we have a document ID
+  useEffect(() => {
+    const fetchVersions = async () => {
+      if (!documentId || !organizationId) return
+
+      setIsLoadingVersions(true)
+      try {
+        const response = await storageService.listVersions(organizationId, documentId)
+        setVersions(response?.items || [])
+        if (response?.items?.length > 0 && currentVersionNo === null) {
+          setCurrentVersionNo(response.items[0].version_no)
+        }
+      } catch (err) {
+        console.error("Error fetching versions:", err)
+      } finally {
+        setIsLoadingVersions(false)
+      }
+    }
+
+    fetchVersions()
+  }, [documentId, organizationId, storageService])
+
+  const handleVersionChange = async (versionNo: number) => {
+    if (!documentId || !organizationId) return
+
+    setIsLoading(true)
+    setCurrentVersionNo(versionNo)
+
+    try {
+      const response = await storageService.getVersion(organizationId, documentId, versionNo)
+
+      setMarkdown(response.content_md)
+      // Reset state for new content
+      hasProcessed.current = false
+      setIssues([]) // Versions from storage might not have issues yet
+
+      setDocumentSummary((prev: any) => ({
+        ...prev,
+        aiSummary: response.version.message || "Viewing version history."
+      }))
+
+    } catch (err) {
+      console.error("Error fetching version content:", err)
+      toast({
+        variant: "destructive",
+        title: "Version load failed",
+        description: "Failed to load version content. Please try again.",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // documentSummary is loaded from API (see useEffect)
 
   // Helper function to get color class based on correctness score
@@ -194,7 +266,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
     if (score >= 75) return "text-yellow-600"
     return "text-red-600"
   }
-  
+
   useEffect(() => {
     void load()
   }, [load])
@@ -213,25 +285,25 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
 
   const navigateTowarning = (direction: 'prev' | 'next') => {
     if (!activewarning) return
-    
+
     const currentIndex = issues.findIndex(tc => tc.id === activewarning.id)
     let newIndex: number
-    
+
     if (direction === 'prev') {
       newIndex = currentIndex > 0 ? currentIndex - 1 : issues.length - 1
     } else {
       newIndex = currentIndex < issues.length - 1 ? currentIndex + 1 : 0
     }
-    
+
     const newwarning = issues[newIndex]
     setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.main_code ? [newwarning.main_code] : [] })
-    
+
     // Scroll to the element only if it's not in view
     const element = document.getElementById(newwarning.id)
     if (element) {
       const rect = element.getBoundingClientRect()
       const isInView = rect.top >= 0 && rect.bottom <= window.innerHeight
-      
+
       if (!isInView) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
@@ -276,7 +348,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
         // Map back to original text position for start
         let normalizedPos = 0
         let originalStartIndex = 0
-        
+
         for (let i = 0; i < currentText.length; i++) {
           if (normalizedPos === normalizedIndex) {
             originalStartIndex = i
@@ -293,7 +365,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
         normalizedPos = 0
         let originalEndIndex = 0
         const targetEndPos = normalizedIndex + normalizedHighlight.length
-        
+
         for (let i = 0; i < currentText.length; i++) {
           if (normalizedPos === targetEndPos) {
             originalEndIndex = i
@@ -305,7 +377,7 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
             normalizedPos++
           }
         }
-        
+
         // If we didn't find the end, set it to the end of the text
         if (originalEndIndex === 0 && targetEndPos >= normalizedCurrent.length) {
           originalEndIndex = currentText.length
@@ -336,11 +408,11 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
           const textContent = node.textContent || ''
           const relativeStart = originalStartIndex - start
           const relativeEnd = originalEndIndex - start
-          
+
           const before = textContent.substring(0, relativeStart)
           const highlighted = textContent.substring(relativeStart, relativeEnd)
           const after = textContent.substring(relativeEnd)
-          
+
           const parent = node.parentNode
           if (parent) {
             if (before) parent.insertBefore(document.createTextNode(before), node)
@@ -353,13 +425,13 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
           // Multiple nodes case - need to wrap across nodes
           const firstNode = affectedNodes[0]
           const lastNode = affectedNodes[affectedNodes.length - 1]
-          
+
           // Build the complete highlighted text
           let highlightedText = ''
-          
+
           affectedNodes.forEach(({ node, start }, index) => {
             const textContent = node.textContent || ''
-            
+
             if (index === 0) {
               // First node
               const relativeStart = originalStartIndex - start
@@ -373,9 +445,9 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
               highlightedText += textContent
             }
           })
-          
+
           span.textContent = highlightedText
-          
+
           // Insert the span and clean up nodes
           const firstParent = firstNode.node.parentNode
           if (firstParent) {
@@ -383,52 +455,52 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
             const firstContent = firstNode.node.textContent || ''
             const firstRelativeStart = originalStartIndex - firstNode.start
             const before = firstContent.substring(0, firstRelativeStart)
-            
+
             if (before) {
               firstParent.insertBefore(document.createTextNode(before), firstNode.node)
             }
             firstParent.insertBefore(span, firstNode.node)
-            
+
             // Handle last node
             const lastContent = lastNode.node.textContent || ''
             const lastRelativeEnd = originalEndIndex - lastNode.start
             const after = lastContent.substring(lastRelativeEnd)
-            
+
             if (after) {
               const lastParent = lastNode.node.parentNode
               if (lastParent) {
                 lastParent.insertBefore(document.createTextNode(after), lastNode.node)
               }
             }
-            
+
             // Remove all affected nodes
             affectedNodes.forEach(({ node }) => {
               node.parentNode?.removeChild(node)
             })
+          }
         }
+      } else {
+        unmatchedIds.push(id)
       }
-    } else {
-      unmatchedIds.push(id)
-    }
-  })
+    })
 
-  // Reorder issues: matched at start and end, unmatched in middle
-  setIssues(prev => {
-    const matchedIssues = prev.filter(i => matchedIds.includes(i.id))
-    const unmatchedIssues = prev.filter(i => unmatchedIds.includes(i.id))
-    const half = Math.floor(matchedIssues.length / 2)
-    return [...matchedIssues.slice(0, half), ...unmatchedIssues, ...matchedIssues.slice(half)]
-  })
-}  // Event delegation handler - use click but with optimized spans
+    // Reorder issues: matched at start and end, unmatched in middle
+    setIssues(prev => {
+      const matchedIssues = prev.filter(i => matchedIds.includes(i.id))
+      const unmatchedIssues = prev.filter(i => unmatchedIds.includes(i.id))
+      const half = Math.floor(matchedIssues.length / 2)
+      return [...matchedIssues.slice(0, half), ...unmatchedIssues, ...matchedIssues.slice(half)]
+    })
+  }  // Event delegation handler - use click but with optimized spans
   const handleArticleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
     const warningId = target.dataset.warningId
-    
+
     if (warningId) {
       const warningText = target.dataset.warningText
       const warning = target.dataset.warning
       const referencesStr = target.dataset.references
-      
+
       if (warningText && warning && referencesStr) {
         // Direct state update
         setActivewarning({
@@ -451,227 +523,258 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
           <ChessLoaderLong />
         </div>
       ) : (
-      <>
-      {issues.length > 0 && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowwarningsList(!showwarningsList);
-          }}
-          className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
-          style={{ touchAction: "manipulation" }}
-          title="View all warnings"
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
-            />
-          </svg>
-          <span className="font-medium">{issues.length}</span>
-        </button>
-      )}
-
-      {showwarningsList && (
-        <div
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-40 max-h-96 overflow-y-auto backdrop-blur-sm"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-start mb-3">
-              <h3 className="font-semibold text-sm text-gray-900">
-                All warnings ({issues.length})
-            </h3>
+        <>
+          {issues.length > 0 && (
             <button
-              onClick={() => setShowwarningsList(false)}
-              className="text-gray-500 hover:text-gray-800 ml-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowwarningsList(!showwarningsList);
+              }}
+              className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white rounded-full p-4 shadow-lg z-40 flex items-center gap-2"
               style={{ touchAction: "manipulation" }}
+              title="View all warnings"
             >
-              ✕
-            </button>
-          </div>
-          <div className="space-y-2">
-            {issues.slice(0, 3).map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.main_code ? [item.main_code] : [] });
-                  setShowwarningsList(false);
-                  const element = document.getElementById(item.id);
-                  if (element) {
-                    element.scrollIntoView({
-                      behavior: "smooth",
-                      block: "center",
-                    });
-                  }
-                }}
-                className="w-full text-left p-2 hover:bg-gray-100 rounded border border-gray-300"
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <p className="text-xs text-gray-800 font-medium mb-1 line-clamp-2">
-                  {item.submission_excerpt}
-                </p>
-                <p className="text-xs text-gray-600 line-clamp-1">
-                  {item.explanation}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activewarning && (
-        <div
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-6 md:max-w-md bg-white/90 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-50 backdrop-blur-md"
-          style={{ willChange: "contents" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-sm text-gray-900">Warning</h3>
-            <button
-              onClick={() => setActivewarning(null)}
-              className="text-gray-500 hover:text-gray-800 ml-2"
-              style={{ touchAction: "manipulation" }}
-            >
-              ✕
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+                />
+              </svg>
+              <span className="font-medium">{issues.length}</span>
             </button>
-          </div>
-          <p className="text-sm text-gray-800 mb-3">{activewarning.warning}</p>
-          {activewarning.references && activewarning.references.length > 0 && (
-            <div className="mb-3">
-              <h4 className="font-semibold text-xs text-gray-900 mb-1">
-                References
-              </h4>
-              <ul className="text-xs text-gray-700 space-y-1">
-                {activewarning.references.map((ref, index) => (
-                  <li key={index} className="pl-2 border-l-2 border-gray-500">
-                    {ref}
-                  </li>
-                ))}
-              </ul>
-            </div>
           )}
-          <div className="flex items-center justify-between pt-3 border-t border-gray-300">
-            <button
-              onClick={() => navigateTowarning("prev")}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
-              style={{ touchAction: "manipulation" }}
-              title="Previous warning"
+
+          {showwarningsList && (
+            <div
+              className="fixed bottom-0 left-0 right-0 md:left-auto md:right-6 md:bottom-6 md:max-w-sm bg-white/80 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-40 max-h-96 overflow-y-auto backdrop-blur-sm"
+              onClick={(e) => e.stopPropagation()}
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              Previous
-            </button>
-            <span className="text-xs text-gray-600">
-              {issues.findIndex((tc) => tc.id === activewarning.id) + 1} {" "}
-              / {issues.length}
-            </span>
-            <button
-              onClick={() => navigateTowarning("next")}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
-              style={{ touchAction: "manipulation" }}
-              title="Next warning"
-            >
-              Next
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-4xl mx-auto md:pt-4">
-        {/* Summary Section */}
-        <div className="mb-8 space-y-4">
-          {/* Document Name */}
-          <h1 className="text-3xl font-bold text-foreground">
-            {filename || documentSummary.name}
-          </h1>
-
-          {/* Separator */}
-          <div className="border-t border-slate-300 my-6"></div>
-
-          {/* Summary Subtitle */}
-          <h2 className="text-lg font-semibold text-foreground">Summary</h2>
-
-          <div className="space-y-3 md:grid md:grid-cols-3 md:gap-6 md:space-y-0">
-            <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
-              <span
-                className={`text-2xl font-bold leading-none ${getScoreColor(
-                  documentSummary.correctnessScore ?? 0
-                )}`}
-              >
-                {documentSummary.correctnessScore ?? 0}%
-              </span>
-              <span className="text-lg leading-none">Correctness Score</span>
-            </div>
-
-            <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
-              <span className="text-2xl font-bold text-orange-600 leading-none">
-                {metricsCounts.mainNotFound ?? 0}
-              </span>
-              <span className="text-lg leading-none">Missing Sections</span>
-            </div>
-
-            <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
-              <span className="text-2xl font-bold text-amber-600 leading-none">
-                {issues.length ?? 0}
-              </span>
-              <span className="text-lg leading-none">Incorrect Sections</span>
-            </div>
-          </div>
-
-          {metricsCounts.mainNotFoundList.length > 0 && (
-            <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
-              <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
-              <div className="flex flex-wrap gap-2">
-                {metricsCounts.mainNotFoundList.map((section, index) => (
-                  <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
-                    {section}
-                  </Badge>
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="font-semibold text-sm text-gray-900">
+                  All warnings ({issues.length})
+                </h3>
+                <button
+                  onClick={() => setShowwarningsList(false)}
+                  className="text-gray-500 hover:text-gray-800 ml-2"
+                  style={{ touchAction: "manipulation" }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-2">
+                {issues.slice(0, 3).map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.main_code ? [item.main_code] : [] });
+                      setShowwarningsList(false);
+                      const element = document.getElementById(item.id);
+                      if (element) {
+                        element.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                      }
+                    }}
+                    className="w-full text-left p-2 hover:bg-gray-100 rounded border border-gray-300"
+                  >
+                    <p className="text-xs text-gray-800 font-medium mb-1 line-clamp-2">
+                      {item.submission_excerpt}
+                    </p>
+                    <p className="text-xs text-gray-600 line-clamp-1">
+                      {item.explanation}
+                    </p>
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-        </div>
+          {activewarning && (
+            <div
+              className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-6 md:max-w-md bg-white/90 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-50 backdrop-blur-md"
+              style={{ willChange: "contents" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-semibold text-sm text-gray-900">Warning</h3>
+                <button
+                  onClick={() => setActivewarning(null)}
+                  className="text-gray-500 hover:text-gray-800 ml-2"
+                  style={{ touchAction: "manipulation" }}
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-sm text-gray-800 mb-3">{activewarning.warning}</p>
+              {activewarning.references && activewarning.references.length > 0 && (
+                <div className="mb-3">
+                  <h4 className="font-semibold text-xs text-gray-900 mb-1">
+                    References
+                  </h4>
+                  <ul className="text-xs text-gray-700 space-y-1">
+                    {activewarning.references.map((ref, index) => (
+                      <li key={index} className="pl-2 border-l-2 border-gray-500">
+                        {ref}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-3 border-t border-gray-300">
+                <button
+                  onClick={() => navigateTowarning("prev")}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
+                  style={{ touchAction: "manipulation" }}
+                  title="Previous warning"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  Previous
+                </button>
+                <span className="text-xs text-gray-600">
+                  {issues.findIndex((tc) => tc.id === activewarning.id) + 1} {" "}
+                  / {issues.length}
+                </span>
+                <button
+                  onClick={() => navigateTowarning("next")}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
+                  style={{ touchAction: "manipulation" }}
+                  title="Next warning"
+                >
+                  Next
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
 
-        <article
-          ref={articleRef}
-          className="prose max-w-none"
-          onClick={handleArticleClick}
-        >
-          {markdownContent}
-        </article>
-      </div>
-      </>
+          <div className="max-w-4xl mx-auto md:pt-4">
+            {/* Summary Section */}
+            <div className="mb-8 space-y-4">
+              {/* Document Name */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h1 className="text-3xl font-bold text-foreground">
+                  {filename || documentSummary.name}
+                </h1>
+
+                {/* Version History Selector */}
+                {versions.length > 1 && (
+                  <div className="flex items-center gap-3 bg-white/50 border border-slate-300 p-2 rounded-sm shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                      <History className="h-4 w-4" />
+                      <span>Version {currentVersionNo}</span>
+                    </div>
+                    <div className="h-4 w-px bg-slate-300 mx-1" />
+                    <div className="flex gap-1">
+                      {versions.slice(0, 5).map((v) => (
+                        <Button
+                          key={v.version_id}
+                          variant={currentVersionNo === v.version_no ? "default" : "ghost"}
+                          size="sm"
+                          className="h-8 px-2 min-w-8"
+                          onClick={() => handleVersionChange(v.version_no)}
+                          disabled={isLoadingVersions || isLoading}
+                          title={v.message || `Version ${v.version_no}`}
+                        >
+                          {v.version_no}
+                        </Button>
+                      ))}
+                      {versions.length > 5 && (
+                        <span className="text-xs text-slate-400 self-center ml-1">...</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Separator */}
+              <div className="border-t border-slate-300 my-6"></div>
+
+              {/* Summary Subtitle */}
+              <h2 className="text-lg font-semibold text-foreground">Summary</h2>
+
+              <div className="space-y-3 md:grid md:grid-cols-3 md:gap-6 md:space-y-0">
+                <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
+                  <span
+                    className={`text-2xl font-bold leading-none ${getScoreColor(
+                      documentSummary.correctnessScore ?? 0
+                    )}`}
+                  >
+                    {documentSummary.correctnessScore ?? 0}%
+                  </span>
+                  <span className="text-lg leading-none">Correctness Score</span>
+                </div>
+
+                <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
+                  <span className="text-2xl font-bold text-orange-600 leading-none">
+                    {metricsCounts.mainNotFound ?? 0}
+                  </span>
+                  <span className="text-lg leading-none">Missing Sections</span>
+                </div>
+
+                <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
+                  <span className="text-2xl font-bold text-amber-600 leading-none">
+                    {issues.length ?? 0}
+                  </span>
+                  <span className="text-lg leading-none">Incorrect Sections</span>
+                </div>
+              </div>
+
+              {metricsCounts.mainNotFoundList.length > 0 && (
+                <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
+                  <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {metricsCounts.mainNotFoundList.map((section, index) => (
+                      <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                        {section}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            <article
+              ref={articleRef}
+              className="prose max-w-none"
+              onClick={handleArticleClick}
+            >
+              {markdownContent}
+            </article>
+          </div>
+        </>
       )}
     </div>
   );

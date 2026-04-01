@@ -96,3 +96,64 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
 export function ChessLoaderLong() {
   return <ChessLoader duration={10} />
 }
+
+export function InlineChessLoader({ duration = 3 }: { duration?: number }) {
+  return (
+    <div className="flex flex-col items-center gap-4 py-8">
+      <div className="chess-board-mini">
+        {Array.from({ length: 64 }, (_, index) => {
+          const row = Math.floor(index / 8)
+          const col = index % 8
+          const isBlack = (row + col) % 2 === 0
+          
+          return (
+            <div
+              key={index}
+              className={`chess-square-mini ${isBlack ? 'chess-square-black' : 'chess-square-white'}`}
+              style={{
+                animationDelay: `${index * 0.02}s`
+              }}
+            />
+          )
+        })}
+      </div>
+      
+      <div className="w-48 flex flex-col items-center gap-2">
+        <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+          <div 
+            className="h-full bg-black rounded-full"
+            style={{
+              animation: `progressBar ${duration}s linear forwards`
+            }}
+          />
+        </div>
+      </div>
+      
+      <style>{`
+        .chess-board-mini {
+          display: grid;
+          grid-template-columns: repeat(8, 15px);
+          grid-template-rows: repeat(8, 15px);
+          gap: 1.5px;
+        }
+
+        .chess-square-mini {
+          width: 15px;
+          height: 15px;
+          animation: chessAnimation 3s ease-in-out infinite;
+          opacity: 0;
+        }
+
+        .chess-square-black {
+          background: black;
+        }
+
+        .chess-square-white {
+          background: white;
+          border: 1px solid black;
+        }
+      `}</style>
+    </div>
+  )
+}
+

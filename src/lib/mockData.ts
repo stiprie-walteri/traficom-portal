@@ -49,6 +49,14 @@ export const addDocument = (document: Document): void => {
   mockDocuments.unshift(document) // Add to beginning of array
 }
 
+// Function to delete a document from the list
+export const deleteDocument = (documentId: string): void => {
+  mockDocuments = mockDocuments.filter((d) => d.id !== documentId)
+  analysisResultsStore.delete(documentId)
+  // Trigger sidebar update
+  window.dispatchEvent(new Event("documentListUpdated"))
+}
+
 // Function to generate a unique ID
 export const generateDocumentId = (): string => {
   return `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`

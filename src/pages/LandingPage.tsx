@@ -3,6 +3,8 @@ import { Logo } from "@/components/Logo"
 import { FileStack, FileUp, FileText } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import checkMateImg from "@/assets/CheckMate.png"
+import { useAuth, SignInButton } from "@clerk/clerk-react"
+import { env } from "@/lib/env"
 
 interface FallingDocument {
   id: number
@@ -21,6 +23,7 @@ const documents: FallingDocument[] = Array.from({ length: 120 }, (_, i) => ({
 
 export function LandingPage() {
   const navigate = useNavigate()
+  const { isSignedIn } = useAuth()
 
   return (
     <div className="relative flex min-h-screen items-center bg-white overflow-hidden" style={{
@@ -69,22 +72,34 @@ export function LandingPage() {
 
             {/* CTA Buttons - 24px gap before buttons */}
             <div className="flex flex-col gap-3 sm:gap-4 max-w-sm">
-              <Button 
+              <Button
                 className="h-12 sm:h-14 text-sm sm:text-base bg-yellow-400 hover:bg-yellow-500 text-black justify-start"
                 onClick={() => navigate('/dashboard/example-1')}
               >
                 <FileStack className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                See in action
+                Demo
               </Button>
-              
-              <Button 
-                variant="outline" 
-                className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
-                onClick={() => navigate('/dashboard')}
-              >
-                <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                Test upload
-              </Button>
+
+              {isSignedIn ? (
+                <Button
+                  variant="outline"
+                  className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
+                  onClick={() => navigate('/dashboard')}
+                >
+                  <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                  Log In
+                </Button>
+              ) : (
+                <SignInButton mode="modal" forceRedirectUrl={`${env.BASE_PATH.endsWith('/') ? env.BASE_PATH.slice(0, -1) : env.BASE_PATH}/dashboard`}>
+                  <Button
+                    variant="outline"
+                    className="h-12 sm:h-14 text-sm sm:text-base backdrop-blur-sm border-2 border-black text-black hover:bg-gray-100 justify-start"
+                  >
+                    <FileUp className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    Log In
+                  </Button>
+                </SignInButton>
+              )}
             </div>
           </div>
 
