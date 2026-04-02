@@ -18,7 +18,6 @@ import {
 } from "lucide-react"
 import { InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
-import documentService from "@/lib/documentService"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, StoredDocument, EvaluateTaskResult } from "@/lib/documentStorageService"
@@ -98,9 +97,6 @@ export function Upload() {
         toast({ variant: 'destructive', title: 'Templates unavailable', description: 'Could not load evaluation templates from the server.' })
       })
   }, [storageService])
-
-  // Accepted types - restricted to PDF only
-  const storageAcceptedTypes = ["application/pdf"]
 
   const handleFileSelect = (file: File) => {
     if (file.type === "application/pdf") {
