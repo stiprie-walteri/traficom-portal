@@ -283,7 +283,7 @@ export class DocumentStorageService {
         const body: EvaluateTasksRequest | Record<string, never> = tasks ? { tasks } : {};
         const params = templateId ? { template_id: templateId } : undefined;
         const response = await this.apiClient.post<EvaluateTasksResponse>(
-            `/orgs/${organizationId}/documents/${documentId}/versions/{version_no}/evaluate`.replace("{version_no}", versionNo.toString()),
+            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/evaluate`,
             body,
             { params }
         );

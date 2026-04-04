@@ -17,11 +17,15 @@ function normalizeBasePath(p: string): string {
 }
 
 function getApiBaseUrl(): string {
-    // If explicitly set (absolute or relative), honor it.
-    // Examples:
-    // - https://api.example.com
-    // - /api (host-relative)
-    // - ./api (relative to current path)
+    // In dev mode, route through the local Vite proxy to avoid CORS.
+    // vite.config.ts proxies /api -> VITE_API_BASE_URL, so we just use /api.
+    if (import.meta.env.DEV) {
+        const basePath = normalizeBasePath(env.BASE_PATH);
+        const prefix = basePath === "/" ? "" : basePath;
+        return `${window.location.origin}${prefix}/api`;
+    }
+
+    // In production use the absolute URL from the env directly.
     const explicit = (env.VITE_API_BASE_URL || "").trim();
     if (explicit) return explicit;
 

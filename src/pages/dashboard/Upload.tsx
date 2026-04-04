@@ -18,7 +18,6 @@ import {
 } from "lucide-react"
 import { InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
-import documentService from "@/lib/documentService"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, StoredDocument, EvaluateTaskResult } from "@/lib/documentStorageService"
@@ -213,17 +212,13 @@ export function Upload() {
       return
     }
 
-    // Step 2: Run compliance analysis
+    // Step 2: Automatic Compliance Analysis
     setStep("analysing")
-    let rawResult: object | null = null
+    let rawResult: any = null
     try {
-      const parseResult = await documentService.parseReal(selectedFile)
-      if (!parseResult.ok) {
-        // Analysis failed — still navigate but without compliance data
-        console.warn("Compliance analysis failed:", parseResult.error)
-      } else {
-        rawResult = parseResult.raw as object
-      }
+      // Default to one task group that is just "Check document for basic compliance"
+      const res = await storageService.evaluateDocument(user.id, uploadResult.document_id, uploadResult.version_no, [["Perform basic compliance check"]], selectedTemplateId || undefined)
+      rawResult = res.results
     } catch (err) {
       console.warn("Compliance analysis error (non-fatal):", err)
     }
@@ -695,7 +690,7 @@ export function Upload() {
                 <div className="mt-4 space-y-2">
                   <h3 className="text-sm font-semibold mb-2">Results ({evalResults.length})</h3>
                   {evalResults.map((r, i) => (
-                     <div
+                    <div
                       key={i}
                       className={cn(
                         "rounded border transition-colors",
@@ -753,7 +748,7 @@ export function Upload() {
           </div>
         </div>
 
-        {/* Learn More */}
+        {/* Learn More Collapsible Section */}
         {!selectedFile && (
           <div className="text-center max-w-3xl mx-auto">
             <button
