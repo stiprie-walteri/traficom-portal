@@ -87,12 +87,63 @@ export interface EvaluateTasksRequest {
     tasks?: string[][];
 }
 
+export interface IncorrectSection {
+    ID: string;
+    Quote: string;
+    Comment: string;
+}
+
+export interface ReasoningStep {
+    step: number;
+    thought: string;
+    sections_queried: number[];
+    section_titles: string[];
+    references_queried: string[];
+}
+
 export interface EvaluateTaskResult {
     task: string[];
     exists: boolean;
     explanation: string;
+    correctness_score?: number;
+    missing_sections?: string[];
+    incorrect_sections?: IncorrectSection[];
+    reasoning_steps?: ReasoningStep[];
 }
 
+/** 202 response from POST .../evaluate */
+export interface EvaluationJob {
+    job_id: string;
+    document_id: string;
+    version_id: string;
+    status: "running";
+}
+
+/** GET .../evaluation/status */
+export interface EvaluationStatus {
+    job_id: string;
+    status: "running" | "completed" | "failed";
+    total_tasks: number;
+    completed_count: number;
+    current_task: string[] | null;
+    results: EvaluateTaskResult[];
+    error: string | null;
+    started_at: string;
+    updated_at: string;
+}
+
+/** GET /api/orgs/{organization_id}/documents/evaluation-statuses */
+export interface DocumentEvaluationStatus {
+    document_id: string;
+    status: string | null;
+    is_analyzing: boolean;
+    total_tasks: number;
+    completed_count: number;
+    current_task: string[] | null;
+    compliance_result: EvaluateTaskResult[] | null;
+}
+
+/** @deprecated use startEvaluation + getEvaluationStatus instead */
 export interface EvaluateTasksResponse {
     organization_id: string;
     document_id: string;
@@ -229,6 +280,20 @@ export class DocumentStorageService {
     }
 
     /**
+     * Retrieves the compliance result if one exists.
+     * GET /api/orgs/{organization_id}/documents/{document_id}/compliance
+     */
+    async getCompliance(
+        organizationId: string,
+        documentId: string
+    ): Promise<{ document_id: string; version_id: string; compliance_result: EvaluateTaskResult[] | null }> {
+        const response = await this.apiClient.get<{ document_id: string; version_id: string; compliance_result: EvaluateTaskResult[] | null }>(
+            `/orgs/${organizationId}/documents/${documentId}/compliance`
+        );
+        return response.data;
+    }
+
+    /**
      * Persists a compliance analysis result for a specific document version.
      * POST /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/compliance
      */
@@ -270,24 +335,52 @@ export class DocumentStorageService {
     }
 
     /**
-     * Runs the AI agent against a specific document version to evaluate task coverage.
+     * Starts an async evaluation job.
      * POST /api/orgs/{organization_id}/documents/{document_id}/versions/{version_no}/evaluate
+     * Returns 202 with a job_id to poll.
      */
-    async evaluateDocument(
+    async startEvaluation(
         organizationId: string,
         documentId: string,
         versionNo: number,
         tasks?: string[][],
         templateId?: string
-    ): Promise<EvaluateTasksResponse> {
+    ): Promise<EvaluationJob> {
         const body: EvaluateTasksRequest | Record<string, never> = tasks ? { tasks } : {};
         const params = templateId ? { template_id: templateId } : undefined;
-        const response = await this.apiClient.post<EvaluateTasksResponse>(
+        const response = await this.apiClient.post<EvaluationJob>(
             `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/evaluate`,
             body,
             { params }
         );
         return response.data;
+    }
+
+    /**
+     * Polls the evaluation status for a document.
+     * GET /api/orgs/{organization_id}/documents/{document_id}/evaluation/status
+     */
+    async getEvaluationStatus(
+        organizationId: string,
+        documentId: string
+    ): Promise<EvaluationStatus> {
+        const response = await this.apiClient.get<EvaluationStatus>(
+            `/orgs/${organizationId}/documents/${documentId}/evaluation/status`
+        );
+        return response.data;
+    }
+
+    /**
+     * Polls the evaluation statuses for all documents.
+     * GET /api/orgs/{organization_id}/documents/evaluation-statuses
+     */
+    async getEvaluationStatuses(
+        organizationId: string
+    ): Promise<DocumentEvaluationStatus[]> {
+        const response = await this.apiClient.get<{ items: DocumentEvaluationStatus[] }>(
+            `/orgs/${organizationId}/documents/evaluation-statuses`
+        );
+        return response.data.items;
     }
 
     // ------------------------------------------------------------------

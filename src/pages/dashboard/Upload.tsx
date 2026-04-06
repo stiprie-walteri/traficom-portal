@@ -20,16 +20,14 @@ import { InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService, StoredDocument, EvaluateTaskResult } from "@/lib/documentStorageService"
+import { DocumentStorageService, StoredDocument, EvaluateTaskResult, EvaluationStatus, DocumentEvaluationStatus } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
 
-type UploadStep = "idle" | "uploading" | "analysing" | "saving" | "done" | "error"
+type UploadStep = "idle" | "uploading" | "done" | "error"
 
 const STEP_LABELS: Record<UploadStep, string> = {
   idle: "",
   uploading: "Uploading document...",
-  analysing: "Running compliance analysis...",
-  saving: "Saving results...",
   done: "Complete",
   error: "Failed",
 }
@@ -60,9 +58,14 @@ export function Upload() {
   const [evalTaskGroups, setEvalTaskGroups] = useState<string[][]>([[""]])
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [evalResults, setEvalResults] = useState<EvaluateTaskResult[] | null>(null)
+  const [evalJobStatus, setEvalJobStatus] = useState<EvaluationStatus | null>(null)
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set())
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  
+  // Bulk Evaluation Status state
+  const [docStatuses, setDocStatuses] = useState<Record<string, DocumentEvaluationStatus>>({})
+  const [isPollingStatuses, setIsPollingStatuses] = useState(false)
 
   const navigate = useNavigate()
   const { user } = useUser()
@@ -75,18 +78,60 @@ export function Upload() {
     [step, isQueryingChunks, isEvaluating, deletingDocId]
   )
 
-  const refreshDocuments = useCallback(() => {
-    if (user?.id) {
-      storageService.listDocuments(user.id)
-        .then(res => setAvailableDocuments(res?.items || []))
-        .catch(console.error)
+  const fetchStatuses = useCallback(async () => {
+    if (!user?.id) return false
+    try {
+      const statuses = await storageService.getEvaluationStatuses(user.id)
+      const statusMap: Record<string, DocumentEvaluationStatus> = {}
+      let anyAnalyzing = false
+      for (const s of statuses) {
+        statusMap[s.document_id] = s
+        if (s.is_analyzing) anyAnalyzing = true
+      }
+      setDocStatuses(statusMap)
+      return anyAnalyzing
+    } catch (err) {
+      console.error("Failed to fetch evaluation statuses:", err)
+      return false
     }
   }, [user?.id, storageService])
+
+  const refreshDocuments = useCallback(async () => {
+    if (user?.id) {
+      try {
+        const res = await storageService.listDocuments(user.id)
+        setAvailableDocuments(res?.items || [])
+        // Fetch statuses immediately
+        const shouldPoll = await fetchStatuses()
+        if (shouldPoll && !isPollingStatuses) {
+          setIsPollingStatuses(true)
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+  }, [user?.id, storageService, fetchStatuses, isPollingStatuses])
 
   // Fetch available documents for the dropdown
   useEffect(() => {
     refreshDocuments()
   }, [refreshDocuments])
+
+  // Map polling looping effect
+  useEffect(() => {
+    let timeout: NodeJS.Timeout
+    const poll = async () => {
+      const shouldContinue = await fetchStatuses()
+      if (shouldContinue) {
+        timeout = setTimeout(poll, 4000)
+      } else {
+        setIsPollingStatuses(false)
+      }
+    }
+    if (isPollingStatuses) poll()
+    return () => clearTimeout(timeout)
+  }, [isPollingStatuses, fetchStatuses])
+
 
   // Fetch templates for evaluation
   useEffect(() => {
@@ -97,6 +142,35 @@ export function Upload() {
         toast({ variant: 'destructive', title: 'Templates unavailable', description: 'Could not load evaluation templates from the server.' })
       })
   }, [storageService])
+
+  // Fetch previous compliance result when a document is selected
+  useEffect(() => {
+    if (!user?.id || !evalDocId) {
+      // Don't auto-clear evalResults here if they just ran an evaluation
+      return
+    }
+    
+    // Only attempt fetch if we aren't already looking at results for this exact doc
+    setEvalJobStatus(null)
+    
+    const fetchPrevCompliance = async () => {
+      try {
+        const res = await storageService.getCompliance(user.id, evalDocId);
+        if (res.compliance_result) {
+          const actualResults = Array.isArray(res.compliance_result)
+            ? res.compliance_result
+            : (res.compliance_result as any).results || null;
+            
+          setEvalResults(actualResults);
+        } else {
+          setEvalResults(null);
+        }
+      } catch (err) {
+        console.error("Failed to load previous compliance:", err);
+      }
+    };
+    fetchPrevCompliance();
+  }, [user?.id, evalDocId, storageService]);
 
   const handleFileSelect = (file: File) => {
     if (file.type === "application/pdf") {
@@ -178,13 +252,37 @@ export function Upload() {
 
     setIsEvaluating(true)
     setEvalResults(null)
+    setEvalJobStatus(null)
     try {
       const finalTasks = tasks.length > 0 ? tasks : undefined
-      const res = await storageService.evaluateDocument(user.id, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
-      setEvalResults(res.results)
+      await storageService.startEvaluation(user.id, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
+      
+      setIsPollingStatuses(true)
+
+      const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+      let isDone = false;
+      
+      while (!isDone) {
+        await delay(3000);
+        try {
+          const status = await storageService.getEvaluationStatus(user.id, evalDocId);
+          setEvalJobStatus(status);
+          if (status.results) {
+              setEvalResults(status.results);
+          }
+          if (status.status === "completed" || status.status === "failed") {
+              isDone = true;
+              if (status.status === "failed") {
+                  toast({ variant: "destructive", title: "Evaluation failed", description: status.error || "The AI agent encountered an error." });
+              }
+          }
+        } catch (pollErr) {
+          console.error("Polling failed:", pollErr);
+        }
+      }
     } catch (err) {
-      console.error("Evaluation failed:", err)
-      toast({ variant: "destructive", title: "Evaluation failed", description: "The AI agent encountered an error." })
+      console.error("Evaluation failed to start:", err)
+      toast({ variant: "destructive", title: "Evaluation failed", description: "Could not start evaluation job." })
     } finally {
       setIsEvaluating(false)
     }
@@ -194,7 +292,6 @@ export function Upload() {
     if (!selectedFile || !user) return
     setErrorMsg(null)
 
-    // Step 1: Upload to document storage
     setStep("uploading")
     let uploadResult: { document_id: string; version_no: number; organization_id?: string }
     try {
@@ -212,32 +309,6 @@ export function Upload() {
       return
     }
 
-    // Step 2: Automatic Compliance Analysis
-    setStep("analysing")
-    let rawResult: any = null
-    try {
-      // Default to one task group that is just "Check document for basic compliance"
-      const res = await storageService.evaluateDocument(user.id, uploadResult.document_id, uploadResult.version_no, [["Perform basic compliance check"]], selectedTemplateId || undefined)
-      rawResult = res.results
-    } catch (err) {
-      console.warn("Compliance analysis error (non-fatal):", err)
-    }
-
-    // Step 3: Save compliance result (if we got one)
-    if (rawResult) {
-      setStep("saving")
-      try {
-        await storageService.saveComplianceResult(
-          user.id,
-          uploadResult.document_id,
-          uploadResult.version_no,
-          rawResult
-        )
-      } catch (err) {
-        console.warn("Failed to save compliance result (non-fatal):", err)
-      }
-    }
-
     // Done — dispatch event so sidebar refreshes
     window.dispatchEvent(new Event("documentListUpdated"))
     setStep("done")
@@ -252,7 +323,7 @@ export function Upload() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
   }
 
-  const steps: UploadStep[] = ["uploading", "analysing", "saving"]
+  const steps: UploadStep[] = ["uploading"]
 
   return (
     <div className="w-full">
@@ -518,28 +589,68 @@ export function Upload() {
               <h2 className="text-xl mb-2 text-muted-foreground">Manage Documents</h2>
             </div>
             <div className="space-y-2 max-w-3xl mx-auto mb-12">
-              {availableDocuments.map(doc => (
+              {availableDocuments.map(doc => {
+                const status = docStatuses[doc.document_id]
+                return (
                 <div
                   key={doc.document_id}
-                  className="flex items-center justify-between p-4 border border-slate-300 dark:border-slate-700 rounded-sm"
+                  className="flex flex-col p-4 border border-slate-300 dark:border-slate-700 rounded-sm"
                   style={{ backgroundColor: 'hsl(var(--sidebar-bg))' }}
                 >
-                  <div className="flex-1 min-w-0 mr-4">
-                    <p className="text-sm font-medium truncate">{doc.title || "Untitled"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(doc.created_at).toLocaleDateString()}
-                    </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <p className="text-sm font-medium truncate">{doc.title || "Untitled"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(doc.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="p-1.5 rounded text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-40"
+                        onClick={() => void handleDeleteDocument(doc)}
+                        disabled={!!deletingDocId}
+                        title="Delete document"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    className="p-1.5 rounded text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-40"
-                    onClick={() => void handleDeleteDocument(doc)}
-                    disabled={!!deletingDocId}
-                    title="Delete document"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-sm">
+                    {!status ? (
+                      <span className="text-muted-foreground text-xs italic">Not analyzed</span>
+                    ) : status.is_analyzing ? (
+                       <div className="flex items-center gap-3">
+                         <InlineChessLoader duration={4} />
+                         <div className="flex-1">
+                           <div className="flex justify-between text-xs mb-1">
+                             <span className="text-muted-foreground animate-pulse">Analyzing...</span>
+                             <span className="text-muted-foreground">{status.completed_count} / {status.total_tasks || 1} tasks</span>
+                           </div>
+                           <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+                             <div className="bg-primary h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(5, (status.completed_count / (status.total_tasks || 1)) * 100)}%` }}></div>
+                           </div>
+                           {status.current_task && status.current_task.length > 0 && <p className="text-[10px] text-muted-foreground mt-1 truncate text-right">{status.current_task.join(" · ")}</p>}
+                         </div>
+                       </div>
+                    ) : status.compliance_result != null ? (
+                       <div className="flex items-center justify-between">
+                         <span className="text-green-600 font-medium flex items-center gap-1.5 text-xs"><CheckCircle2 className="h-4 w-4" /> Results Ready ({status.compliance_result.length} items)</span>
+                         <Button variant="outline" size="sm" onClick={() => navigate(`/dashboard/document/${doc.document_id}`)}>View Results</Button>
+                       </div>
+                    ) : status.status === "failed" ? (
+                       <div className="flex items-center justify-between text-red-500 text-xs">
+                         <div className="flex items-center gap-1.5">
+                           <AlertCircle className="h-4 w-4" />
+                           <span className="font-semibold">Analysis Failed</span>
+                         </div>
+                       </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs italic">Not analyzed</span>
+                    )}
+                  </div>
                 </div>
-              ))}
+              )})}
             </div>
           </>
         )}
@@ -681,7 +792,19 @@ export function Upload() {
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-700 rounded-sm bg-slate-50/50 dark:bg-slate-900/20 backdrop-blur-sm">
                   <InlineChessLoader duration={8} />
-                  <p className="text-xs font-medium animate-pulse mt-2">AI is evaluating your document tasks...</p>
+                  {evalJobStatus && evalJobStatus.status === "running" ? (
+                      <div className="mt-4 w-full px-8 text-center">
+                          <p className="text-xs font-medium animate-pulse mb-2">Analyzing... ({evalJobStatus.completed_count} / {evalJobStatus.total_tasks || 1} tasks)</p>
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+                              <div className="bg-primary h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(5, (evalJobStatus.completed_count / (evalJobStatus.total_tasks || 1)) * 100)}%` }}></div>
+                          </div>
+                          {evalJobStatus.current_task && evalJobStatus.current_task.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-2 line-clamp-1">Checking: {evalJobStatus.current_task.join(" · ")}</p>
+                          )}
+                      </div>
+                  ) : (
+                      <p className="text-xs font-medium animate-pulse mt-2">Starting AI evaluation...</p>
+                  )}
                 </div>
               )}
 
@@ -718,8 +841,11 @@ export function Upload() {
                           : <X className="h-4 w-4 text-red-500 shrink-0" />
                         }
                         <span className="text-sm flex-1 font-medium truncate">
-                          {r.task.join(" · ")}
+                          {Array.isArray(r.task) ? r.task.join(" · ") : String(r.task || "Unknown task")}
                         </span>
+                        {r.correctness_score !== undefined && (
+                            <span className="text-xs font-medium mr-2">Score: {r.correctness_score}</span>
+                        )}
                         <ChevronRight
                           className={cn(
                             "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
@@ -728,8 +854,56 @@ export function Upload() {
                         />
                       </button>
                       {expandedResults.has(i) && (
-                        <div className="px-3 pb-3">
+                        <div className="px-3 pb-3 space-y-2">
                           <p className="text-xs text-muted-foreground leading-relaxed">{r.explanation}</p>
+                          {r.missing_sections && r.missing_sections.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs font-semibold text-red-500">Missing Sections:</p>
+                              <ul className="list-disc pl-4 mt-1">
+                                {r.missing_sections.map((sec, sid) => (
+                                    <li key={sid} className="text-xs text-muted-foreground">{sec}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {r.incorrect_sections && r.incorrect_sections.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs font-semibold text-orange-500">Incorrect Sections:</p>
+                              <div className="space-y-2 mt-1">
+                                {r.incorrect_sections.map((sec, sid) => (
+                                    <div key={sid} className="bg-orange-500/10 p-2 rounded text-xs border border-orange-500/20">
+                                      <p className="font-medium text-orange-600 mb-1">Quote: "{sec.Quote}"</p>
+                                      <p className="text-muted-foreground">Comment: {sec.Comment}</p>
+                                    </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {r.reasoning_steps && r.reasoning_steps.length > 0 && (
+                            <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-3">
+                              <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Agent Reasoning:</p>
+                              <div className="space-y-3">
+                                {r.reasoning_steps.map((rs, rsid) => (
+                                    <div key={rsid} className="text-xs bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded">
+                                        <div className="flex items-start gap-2 mb-1">
+                                            <span className="font-semibold text-primary">Step {rs.step}:</span>
+                                            <span className="text-muted-foreground italic">{rs.thought}</span>
+                                        </div>
+                                        {rs.section_titles && rs.section_titles.length > 0 && (
+                                            <div className="ml-9 text-slate-500 mt-1">
+                                                Sections checked: {rs.section_titles.join(" · ")}
+                                            </div>
+                                        )}
+                                        {rs.references_queried && rs.references_queried.length > 0 && (
+                                            <div className="ml-9 text-slate-500 mt-1">
+                                                References checked: {rs.references_queried.join(", ")}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -738,7 +912,7 @@ export function Upload() {
                     variant="outline"
                     size="sm"
                     className="w-full mt-2"
-                    onClick={() => { setEvalResults(null); setExpandedResults(new Set()) }}
+                    onClick={() => { setEvalResults(null); setExpandedResults(new Set()); setEvalJobStatus(null); }}
                   >
                     Clear Results
                   </Button>
