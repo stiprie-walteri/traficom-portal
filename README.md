@@ -2,6 +2,19 @@
 
 A rules-as-code platform that streamlines regulatory compliance for companies and auditors by automating document review and validation against legislation.
 
+## How to run locally!!!
+Install dependencies
+```
+pnpm i
+```
+
+Copy .env.example to .env and fill in the values
+
+run 
+```
+pnpm run dev
+```
+
 ## Overview
 
 **In Simple Terms**
