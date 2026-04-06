@@ -74,7 +74,7 @@ export function Upload() {
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
   const isProcessing = useMemo(() =>
-    step === "uploading" || step === "analysing" || step === "saving" || isQueryingChunks || isEvaluating || !!deletingDocId,
+    step === "uploading" || isQueryingChunks || isEvaluating || !!deletingDocId,
     [step, isQueryingChunks, isEvaluating, deletingDocId]
   )
 
