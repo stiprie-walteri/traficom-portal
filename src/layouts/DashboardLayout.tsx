@@ -714,30 +714,20 @@ export function DashboardLayout() {
                         type="button"
                         onClick={() => setCreateAndRunAnalysis((prev) => !prev)}
                         className={cn(
-                          "relative flex h-11 w-[92px] shrink-0 items-center rounded-full border p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20",
+                          "relative h-7 w-12 shrink-0 rounded-full border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20",
                           createAndRunAnalysis
-                            ? "border-slate-900 bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                            : "border-slate-300 bg-white"
+                            ? "border-slate-900 bg-slate-950"
+                            : "border-slate-300 bg-slate-200"
                         )}
                         aria-pressed={createAndRunAnalysis}
                         aria-label="Run full project analysis after creation"
                       >
                         <span
                           className={cn(
-                            "pointer-events-none absolute inset-y-1 left-1 w-[44px] rounded-full transition-transform duration-200",
-                            createAndRunAnalysis ? "translate-x-[40px] bg-white" : "translate-x-0 bg-slate-900"
-                          )}
-                        />
-                        <span className="relative z-10 flex w-full items-center justify-between px-2 text-[11px] font-semibold uppercase tracking-[0.12em]">
-                          <span className={cn(createAndRunAnalysis ? "text-slate-500" : "text-white")}>Off</span>
-                          <span className={cn(createAndRunAnalysis ? "text-slate-900" : "text-slate-400")}>On</span>
-                        </span>
-                        <span
-                          className={cn(
-                            "absolute top-1/2 z-10 h-7 w-7 -translate-y-1/2 rounded-full border shadow-sm transition-all duration-200",
+                            "absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-sm transition-all duration-200",
                             createAndRunAnalysis
-                              ? "left-[58px] border-slate-200 bg-white"
-                              : "left-1 border-slate-900 bg-slate-900"
+                              ? "left-6"
+                              : "left-1"
                           )}
                         />
                       </button>
