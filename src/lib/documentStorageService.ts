@@ -1,5 +1,86 @@
 import { AxiosInstance } from "axios";
 
+export interface WorkspaceMe {
+    organization_id: string;
+}
+
+export interface ProjectItem {
+    project_id: string;
+    organization_id: string;
+    name: string;
+    description?: string | null;
+    legislation_template_ids?: string[] | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface LegislationTemplate {
+    id: string;
+    name: string;
+}
+
+export interface ProjectEvaluationResult {
+    legislation_id: string;
+    legislation_name: string;
+    task: string[];
+    exists: boolean;
+    explanation: string;
+    correctness_score?: number;
+    missing_sections?: string[];
+    incorrect_sections?: IncorrectSection[];
+    reasoning_steps?: ReasoningStep[];
+}
+
+export interface ProjectComplianceDocument {
+    document_id: string;
+    title: string;
+    version_id: string;
+    version_no: number;
+}
+
+export interface ProjectComplianceLegislationGroup {
+    template_id: string;
+    template_name: string;
+    task_count: number;
+    results: ProjectEvaluationResult[];
+}
+
+export interface ProjectComplianceResult {
+    evaluation_job_id: string;
+    project_id: string;
+    documents: ProjectComplianceDocument[];
+    legislation_template_ids: string[];
+    legislations: ProjectComplianceLegislationGroup[];
+    results: ProjectEvaluationResult[];
+}
+
+export interface ProjectEvaluationJob {
+    job_id: string;
+    project_id: string;
+    status: "running";
+}
+
+export interface ProjectEvaluationStatus {
+    job_id: string;
+    status: "running" | "completed" | "failed";
+    organization_id: string;
+    project_id: string;
+    status_message?: string | null;
+    progress_percent?: number | null;
+    total_tasks: number;
+    completed_count: number;
+    current_task: string[] | null;
+    estimated_seconds_remaining?: number | null;
+    estimated_completion_at?: string | null;
+    results: ProjectEvaluationResult[];
+    compliance_result: ProjectComplianceResult | null;
+    error: string | null;
+    started_at: string;
+    updated_at: string;
+    documents: ProjectComplianceDocument[];
+    legislation_template_ids: string[];
+}
+
 export interface DocumentVersion {
     version_id: string;
     organization_id: string;
@@ -19,19 +100,12 @@ export interface StoredDocument {
     document_id: string;
     organization_id: string;
     title: string;
-    folder_id?: string | null;
+    project_id?: string | null;
+    project?: ProjectItem | null;
     created_at: string;
     created_by: string;
     updated_at: string;
     current_version?: DocumentVersion;
-}
-
-export interface FolderItem {
-    id: string;
-    organization_id: string;
-    name: string;
-    created_at: string;
-    created_by: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -42,6 +116,8 @@ export interface PaginatedResponse<T> {
 }
 
 export interface UploadResponse {
+    organization_id?: string;
+    project_id?: string;
     document_id: string;
     version_id: string;
     version_no: number;
@@ -153,7 +229,7 @@ export interface EvaluateTasksResponse {
 
 export interface UploadDocumentParams {
     organizationId: string;
-    actorUserId: string;
+    projectId?: string;
     file: File;
     documentId?: string;
     title?: string;
@@ -163,6 +239,7 @@ export interface UploadDocumentParams {
 export interface ListDocumentsParams {
     limit?: number;
     offset?: number;
+    project_id?: string;
 }
 
 /**
@@ -172,6 +249,11 @@ export interface ListDocumentsParams {
 export class DocumentStorageService {
     constructor(private apiClient: AxiosInstance) { }
 
+    async getMe(): Promise<WorkspaceMe> {
+        const response = await this.apiClient.get<WorkspaceMe>("/me");
+        return response.data;
+    }
+
     /**
      * Upload a Markdown file to create a new document or add a new version to an existing one.
      * POST /api/documents/upload
@@ -179,9 +261,9 @@ export class DocumentStorageService {
     async uploadDocument(params: UploadDocumentParams): Promise<UploadResponse> {
         const formData = new FormData();
         formData.append("organization_id", params.organizationId);
-        formData.append("actor_user_id", params.actorUserId);
         formData.append("file", params.file);
 
+        if (params.projectId) formData.append("project_id", params.projectId);
         if (params.documentId) formData.append("document_id", params.documentId);
         if (params.title) formData.append("title", params.title);
         if (params.message) formData.append("message", params.message);
@@ -209,6 +291,112 @@ export class DocumentStorageService {
         const response = await this.apiClient.get<PaginatedResponse<StoredDocument>>(
             `/orgs/${organizationId}/documents`,
             { params }
+        );
+        return response.data;
+    }
+
+    async listProjects(organizationId: string): Promise<ProjectItem[]> {
+        const response = await this.apiClient.get<ProjectItem[] | PaginatedResponse<ProjectItem>>(
+            `/orgs/${organizationId}/projects`
+        );
+        const data = response.data;
+        return Array.isArray(data) ? data : data?.items || [];
+    }
+
+    async createProject(
+        organizationId: string,
+        payload: { name: string; description?: string; legislation_template_ids: string[] }
+    ): Promise<ProjectItem> {
+        const response = await this.apiClient.post<ProjectItem>(
+            `/orgs/${organizationId}/projects`,
+            payload
+        );
+        return response.data;
+    }
+
+    async getProject(organizationId: string, projectId: string): Promise<ProjectItem> {
+        const response = await this.apiClient.get<ProjectItem>(
+            `/orgs/${organizationId}/projects/${projectId}`
+        );
+        return response.data;
+    }
+
+    async updateProject(
+        organizationId: string,
+        projectId: string,
+        payload: { name?: string; description?: string; legislation_template_ids?: string[] }
+    ): Promise<ProjectItem> {
+        const response = await this.apiClient.patch<ProjectItem>(
+            `/orgs/${organizationId}/projects/${projectId}`,
+            payload
+        );
+        return response.data;
+    }
+
+    async deleteProject(organizationId: string, projectId: string): Promise<void> {
+        await this.apiClient.delete(`/orgs/${organizationId}/projects/${projectId}`);
+    }
+
+    async listProjectDocuments(
+        organizationId: string,
+        projectId: string
+    ): Promise<PaginatedResponse<StoredDocument>> {
+        const response = await this.apiClient.get<PaginatedResponse<StoredDocument>>(
+            `/orgs/${organizationId}/projects/${projectId}/documents`
+        );
+        return response.data;
+    }
+
+    async startProjectEvaluation(
+        organizationId: string,
+        projectId: string,
+        templateIds?: string[]
+    ): Promise<ProjectEvaluationJob> {
+        const response = await this.apiClient.post<ProjectEvaluationJob>(
+            `/orgs/${organizationId}/projects/${projectId}/evaluate`,
+            templateIds && templateIds.length > 0 ? { template_ids: templateIds } : {}
+        );
+        return response.data;
+    }
+
+    async getProjectEvaluationStatus(
+        organizationId: string,
+        projectId: string
+    ): Promise<ProjectEvaluationStatus> {
+        const response = await this.apiClient.get<ProjectEvaluationStatus>(
+            `/orgs/${organizationId}/projects/${projectId}/evaluation/status`
+        );
+        return response.data;
+    }
+
+    async waitForProjectEvaluationCompletion(
+        organizationId: string,
+        projectId: string,
+        options?: {
+            intervalMs?: number;
+            onProgress?: (status: ProjectEvaluationStatus) => void;
+        }
+    ): Promise<ProjectEvaluationStatus> {
+        const intervalMs = options?.intervalMs ?? 4000;
+
+        while (true) {
+            const status = await this.getProjectEvaluationStatus(organizationId, projectId);
+            options?.onProgress?.(status);
+
+            if (status.status === "completed" || status.status === "failed") {
+                return status;
+            }
+
+            await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+        }
+    }
+
+    async getProjectCompliance(
+        organizationId: string,
+        projectId: string
+    ): Promise<{ project_id: string; compliance_result: ProjectComplianceResult | null }> {
+        const response = await this.apiClient.get<{ project_id: string; compliance_result: ProjectComplianceResult | null }>(
+            `/orgs/${organizationId}/projects/${projectId}/compliance`
         );
         return response.data;
     }
@@ -327,8 +515,8 @@ export class DocumentStorageService {
      * Fetch available agent templates
      * GET /api/legislation/templates
      */
-    async getTemplates(): Promise<{ templates: { id: string; name: string }[] }> {
-        const response = await this.apiClient.get<{ templates: { id: string; name: string }[] }>(
+    async getTemplates(): Promise<{ templates: LegislationTemplate[] }> {
+        const response = await this.apiClient.get<{ templates: LegislationTemplate[] }>(
             `/legislation/templates`
         );
         return response.data;
@@ -383,41 +571,14 @@ export class DocumentStorageService {
         return response.data.items;
     }
 
-    // ------------------------------------------------------------------
-    // Folder management
-    // ------------------------------------------------------------------
-
-    async listFolders(organizationId: string): Promise<FolderItem[]> {
-        const response = await this.apiClient.get<FolderItem[]>(
-            `/orgs/${organizationId}/folders`
-        );
-        return response.data;
-    }
-
-    async createFolder(organizationId: string, name: string): Promise<FolderItem> {
-        const response = await this.apiClient.post<FolderItem>(
-            `/orgs/${organizationId}/folders`,
-            { name }
-        );
-        return response.data;
-    }
-
-    async renameFolder(organizationId: string, folderId: string, name: string): Promise<void> {
-        await this.apiClient.patch(`/orgs/${organizationId}/folders/${folderId}`, { name });
-    }
-
-    async deleteFolder(organizationId: string, folderId: string): Promise<void> {
-        await this.apiClient.delete(`/orgs/${organizationId}/folders/${folderId}`);
-    }
-
-    async moveDocumentToFolder(
+    async moveDocumentToProject(
         organizationId: string,
         documentId: string,
-        folderId: string | null
+        projectId: string
     ): Promise<void> {
         await this.apiClient.patch(
-            `/orgs/${organizationId}/documents/${documentId}/folder`,
-            { folder_id: folderId }
+            `/orgs/${organizationId}/documents/${documentId}/project`,
+            { project_id: projectId }
         );
     }
 }

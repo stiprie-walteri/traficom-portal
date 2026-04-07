@@ -22,9 +22,10 @@ interface RealResultsProps {
     document_id?: string
     organization_id?: string
   }
+  documentOnly?: boolean
 }
 
-export function RealResults({ storedData }: RealResultsProps = {}) {
+export function RealResults({ storedData, documentOnly = false }: RealResultsProps = {}) {
   const location = useLocation()
   const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
   // Use stored data if provided, otherwise use location state
@@ -259,13 +260,6 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
   }
 
   // documentSummary is loaded from API (see useEffect)
-
-  // Helper function to get color class based on correctness score
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-green-600"
-    if (score >= 75) return "text-yellow-600"
-    return "text-red-600"
-  }
 
   useEffect(() => {
     void load()
@@ -680,16 +674,13 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
           )}
 
           <div className="max-w-4xl mx-auto md:pt-4">
-            {/* Summary Section */}
             <div className="mb-8 space-y-4">
-              {/* Document Name */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <h1 className="text-3xl font-bold text-foreground">
                   {filename || documentSummary.name}
                 </h1>
 
-                {/* Version History Selector */}
-                {versions.length > 1 && (
+                {!documentOnly && versions.length > 1 && (
                   <div className="flex items-center gap-3 bg-white/50 border border-slate-300 p-2 rounded-sm shadow-sm">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <History className="h-4 w-4" />
@@ -718,52 +709,49 @@ export function RealResults({ storedData }: RealResultsProps = {}) {
                 )}
               </div>
 
-              {/* Separator */}
-              <div className="border-t border-slate-300 my-6"></div>
+              {!documentOnly && (
+                <>
+                  <div className="border-t border-slate-300 my-6"></div>
 
-              {/* Summary Subtitle */}
-              <h2 className="text-lg font-semibold text-foreground">Summary</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Summary</h2>
 
-              <div className="space-y-3 md:grid md:grid-cols-3 md:gap-6 md:space-y-0">
-                <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
-                  <span
-                    className={`text-2xl font-bold leading-none ${getScoreColor(
-                      documentSummary.correctnessScore ?? 0
-                    )}`}
-                  >
-                    {documentSummary.correctnessScore ?? 0}%
-                  </span>
-                  <span className="text-lg leading-none">Correctness Score</span>
-                </div>
+                  <div className="space-y-3 md:grid md:grid-cols-3 md:gap-6 md:space-y-0">
+                    <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
+                      <span className="text-2xl font-bold leading-none text-foreground">
+                        {documentSummary.correctnessScore ?? 0}%
+                      </span>
+                      <span className="text-lg leading-none">Correctness Score</span>
+                    </div>
 
-                <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
-                  <span className="text-2xl font-bold text-orange-600 leading-none">
-                    {metricsCounts.mainNotFound ?? 0}
-                  </span>
-                  <span className="text-lg leading-none">Missing Sections</span>
-                </div>
+                    <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
+                      <span className="text-2xl font-bold text-orange-600 leading-none">
+                        {metricsCounts.mainNotFound ?? 0}
+                      </span>
+                      <span className="text-lg leading-none">Missing Sections</span>
+                    </div>
 
-                <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
-                  <span className="text-2xl font-bold text-amber-600 leading-none">
-                    {issues.length ?? 0}
-                  </span>
-                  <span className="text-lg leading-none">Incorrect Sections</span>
-                </div>
-              </div>
-
-              {metricsCounts.mainNotFoundList.length > 0 && (
-                <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
-                  <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {metricsCounts.mainNotFoundList.map((section, index) => (
-                      <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
-                        {section}
-                      </Badge>
-                    ))}
+                    <div className="flex items-center gap-2 p-4 rounded-sm backdrop-blur-sm bg-white/30">
+                      <span className="text-2xl font-bold text-amber-600 leading-none">
+                        {issues.length ?? 0}
+                      </span>
+                      <span className="text-lg leading-none">Incorrect Sections</span>
+                    </div>
                   </div>
-                </div>
-              )}
 
+                  {metricsCounts.mainNotFoundList.length > 0 && (
+                    <div className="mt-6 p-4 rounded-sm bg-red-50 border border-red-200">
+                      <h3 className="text-lg font-semibold text-red-900 mb-3">Missing Sections</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {metricsCounts.mainNotFoundList.map((section, index) => (
+                          <Badge key={index} variant="destructive" className="rounded-none bg-red-600 hover:bg-red-700 text-white font-medium px-3 py-1">
+                            {section}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <article

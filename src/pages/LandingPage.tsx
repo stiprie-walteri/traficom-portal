@@ -74,7 +74,7 @@ export function LandingPage() {
             <div className="flex flex-col gap-3 sm:gap-4 max-w-sm">
               <Button
                 className="h-12 sm:h-14 text-sm sm:text-base bg-yellow-400 hover:bg-yellow-500 text-black justify-start"
-                onClick={() => navigate('/dashboard/example-1')}
+                onClick={() => navigate('/demo')}
               >
                 <FileStack className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                 Demo
