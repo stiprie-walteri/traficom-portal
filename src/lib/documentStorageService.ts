@@ -252,9 +252,80 @@ export interface ListDocumentsParams {
  */
 export class DocumentStorageService {
     constructor(private apiClient: AxiosInstance) { }
+    private static readonly RATE_LIMIT_GRACE_MS = 5 * 60 * 1000;
 
     private sleep(ms: number): Promise<void> {
         return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    private isRateLimitError(error: unknown): boolean {
+        const maybeError = error as {
+            response?: {
+                status?: number;
+                data?: {
+                    error?: {
+                        code?: number | string;
+                    };
+                };
+            };
+        };
+
+        return (
+            maybeError?.response?.status === 429 ||
+            maybeError?.response?.data?.error?.code === 429
+        );
+    }
+
+    private getRateLimitDelayMs(error: unknown): number {
+        const maybeError = error as {
+            response?: {
+                headers?: Record<string, string | number | undefined>;
+                data?: {
+                    error?: {
+                        metadata?: {
+                            headers?: Record<string, string | number | undefined>;
+                        };
+                    };
+                };
+            };
+        };
+
+        const responseHeaders = maybeError?.response?.headers;
+        const metadataHeaders = maybeError?.response?.data?.error?.metadata?.headers;
+        const resetValue =
+            responseHeaders?.["x-ratelimit-reset"] ??
+            responseHeaders?.["X-RateLimit-Reset"] ??
+            metadataHeaders?.["X-RateLimit-Reset"] ??
+            metadataHeaders?.["x-ratelimit-reset"];
+
+        if (resetValue) {
+            const resetAt = Number(resetValue);
+            if (!Number.isNaN(resetAt) && resetAt > Date.now()) {
+                return Math.max(1000, resetAt - Date.now());
+            }
+        }
+
+        return 15000;
+    }
+
+    private async retryOnRateLimit<T>(operation: () => Promise<T>): Promise<T> {
+        const startedAt = Date.now();
+
+        while (true) {
+            try {
+                return await operation();
+            } catch (error) {
+                if (!this.isRateLimitError(error)) {
+                    throw error;
+                }
+
+                if (Date.now() - startedAt >= DocumentStorageService.RATE_LIMIT_GRACE_MS) {
+                    throw error;
+                }
+
+                await this.sleep(this.getRateLimitDelayMs(error));
+            }
+        }
     }
 
     private getPollingErrorMessage(error: unknown): string {
@@ -415,9 +486,11 @@ export class DocumentStorageService {
         projectId: string,
         templateIds?: string[]
     ): Promise<ProjectEvaluationJob> {
-        const response = await this.apiClient.post<ProjectEvaluationJob>(
-            `/orgs/${organizationId}/projects/${projectId}/evaluate`,
-            templateIds && templateIds.length > 0 ? { template_ids: templateIds } : {}
+        const response = await this.retryOnRateLimit(() =>
+            this.apiClient.post<ProjectEvaluationJob>(
+                `/orgs/${organizationId}/projects/${projectId}/evaluate`,
+                templateIds && templateIds.length > 0 ? { template_ids: templateIds } : {}
+            )
         );
         return response.data;
     }
@@ -426,8 +499,10 @@ export class DocumentStorageService {
         organizationId: string,
         projectId: string
     ): Promise<ProjectEvaluationStatus> {
-        const response = await this.apiClient.get<ProjectEvaluationStatus>(
-            `/orgs/${organizationId}/projects/${projectId}/evaluation/status`
+        const response = await this.retryOnRateLimit(() =>
+            this.apiClient.get<ProjectEvaluationStatus>(
+                `/orgs/${organizationId}/projects/${projectId}/evaluation/status`
+            )
         );
         return response.data;
     }
@@ -659,10 +734,12 @@ export class DocumentStorageService {
     ): Promise<EvaluationJob> {
         const body: EvaluateTasksRequest | Record<string, never> = tasks ? { tasks } : {};
         const params = templateId ? { template_id: templateId } : undefined;
-        const response = await this.apiClient.post<EvaluationJob>(
-            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/evaluate`,
-            body,
-            { params }
+        const response = await this.retryOnRateLimit(() =>
+            this.apiClient.post<EvaluationJob>(
+                `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/evaluate`,
+                body,
+                { params }
+            )
         );
         return response.data;
     }
@@ -675,8 +752,10 @@ export class DocumentStorageService {
         organizationId: string,
         documentId: string
     ): Promise<EvaluationStatus> {
-        const response = await this.apiClient.get<EvaluationStatus>(
-            `/orgs/${organizationId}/documents/${documentId}/evaluation/status`
+        const response = await this.retryOnRateLimit(() =>
+            this.apiClient.get<EvaluationStatus>(
+                `/orgs/${organizationId}/documents/${documentId}/evaluation/status`
+            )
         );
         return response.data;
     }
@@ -688,8 +767,10 @@ export class DocumentStorageService {
     async getEvaluationStatuses(
         organizationId: string
     ): Promise<DocumentEvaluationStatus[]> {
-        const response = await this.apiClient.get<{ items: DocumentEvaluationStatus[] }>(
-            `/orgs/${organizationId}/documents/evaluation-statuses`
+        const response = await this.retryOnRateLimit(() =>
+            this.apiClient.get<{ items: DocumentEvaluationStatus[] }>(
+                `/orgs/${organizationId}/documents/evaluation-statuses`
+            )
         );
         return response.data.items;
     }
