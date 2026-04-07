@@ -112,15 +112,6 @@ export function ProjectProcessLoader({
         <div className="flex flex-col items-center text-center">
           <CheckerboardVisual />
 
-          <div className="mt-8 w-full max-w-xl">
-            <div className="h-2 w-full rounded-full bg-slate-200">
-              <div
-                className="h-2 rounded-full bg-black transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-
           <h3 className="mt-8 text-[2rem] font-semibold leading-tight text-slate-900">{title}</h3>
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-700">{description}</p>
 
