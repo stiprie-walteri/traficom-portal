@@ -202,6 +202,10 @@ export interface EvaluationStatus {
     total_tasks: number;
     completed_count: number;
     current_task: string[] | null;
+    status_message?: string | null;
+    progress_percent?: number | null;
+    estimated_seconds_remaining?: number | null;
+    estimated_completion_at?: string | null;
     results: EvaluateTaskResult[];
     error: string | null;
     started_at: string;
@@ -248,6 +252,65 @@ export interface ListDocumentsParams {
  */
 export class DocumentStorageService {
     constructor(private apiClient: AxiosInstance) { }
+
+    private sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    private getPollingErrorMessage(error: unknown): string {
+        const maybeError = error as {
+            response?: {
+                status?: number;
+                data?: {
+                    error?: {
+                        message?: string;
+                    };
+                };
+            };
+            message?: string;
+        };
+
+        const apiMessage = maybeError?.response?.data?.error?.message;
+        const fallbackMessage = maybeError?.message || "Temporary polling error";
+
+        if (maybeError?.response?.status === 429) {
+            return apiMessage || "Rate limit reached. Waiting before retrying.";
+        }
+
+        return apiMessage || fallbackMessage;
+    }
+
+    private hasProjectProgress(
+        previous: ProjectEvaluationStatus | null,
+        next: ProjectEvaluationStatus
+    ): boolean {
+        if (!previous) return true;
+
+        return (
+            next.completed_count > previous.completed_count ||
+            next.updated_at !== previous.updated_at ||
+            next.status !== previous.status ||
+            next.progress_percent !== previous.progress_percent ||
+            (next.status_message || "") !== (previous.status_message || "") ||
+            (next.current_task || []).join("|") !== (previous.current_task || []).join("|")
+        );
+    }
+
+    private hasDocumentProgress(
+        previous: EvaluationStatus | null,
+        next: EvaluationStatus
+    ): boolean {
+        if (!previous) return true;
+
+        return (
+            next.completed_count > previous.completed_count ||
+            next.updated_at !== previous.updated_at ||
+            next.status !== previous.status ||
+            next.progress_percent !== previous.progress_percent ||
+            (next.status_message || "") !== (previous.status_message || "") ||
+            (next.current_task || []).join("|") !== (previous.current_task || []).join("|")
+        );
+    }
 
     async getMe(): Promise<WorkspaceMe> {
         const response = await this.apiClient.get<WorkspaceMe>("/me");
@@ -374,20 +437,80 @@ export class DocumentStorageService {
         projectId: string,
         options?: {
             intervalMs?: number;
+            stallTimeoutMs?: number;
             onProgress?: (status: ProjectEvaluationStatus) => void;
+            onTransientError?: (message: string, lastStatus: ProjectEvaluationStatus | null) => void;
         }
     ): Promise<ProjectEvaluationStatus> {
         const intervalMs = options?.intervalMs ?? 4000;
+        const stallTimeoutMs = options?.stallTimeoutMs ?? 5 * 60 * 1000;
+        let lastStatus: ProjectEvaluationStatus | null = null;
+        let lastProgressAt = Date.now();
 
         while (true) {
-            const status = await this.getProjectEvaluationStatus(organizationId, projectId);
-            options?.onProgress?.(status);
+            try {
+                const status = await this.getProjectEvaluationStatus(organizationId, projectId);
 
-            if (status.status === "completed" || status.status === "failed") {
-                return status;
+                if (this.hasProjectProgress(lastStatus, status)) {
+                    lastProgressAt = Date.now();
+                }
+
+                lastStatus = status;
+                options?.onProgress?.(status);
+
+                if (status.status === "completed" || status.status === "failed") {
+                    return status;
+                }
+            } catch (error) {
+                options?.onTransientError?.(this.getPollingErrorMessage(error), lastStatus);
+
+                if (Date.now() - lastProgressAt >= stallTimeoutMs) {
+                    throw error;
+                }
             }
 
-            await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+            await this.sleep(intervalMs);
+        }
+    }
+
+    async waitForEvaluationCompletion(
+        organizationId: string,
+        documentId: string,
+        options?: {
+            intervalMs?: number;
+            stallTimeoutMs?: number;
+            onProgress?: (status: EvaluationStatus) => void;
+            onTransientError?: (message: string, lastStatus: EvaluationStatus | null) => void;
+        }
+    ): Promise<EvaluationStatus> {
+        const intervalMs = options?.intervalMs ?? 4000;
+        const stallTimeoutMs = options?.stallTimeoutMs ?? 5 * 60 * 1000;
+        let lastStatus: EvaluationStatus | null = null;
+        let lastProgressAt = Date.now();
+
+        while (true) {
+            try {
+                const status = await this.getEvaluationStatus(organizationId, documentId);
+
+                if (this.hasDocumentProgress(lastStatus, status)) {
+                    lastProgressAt = Date.now();
+                }
+
+                lastStatus = status;
+                options?.onProgress?.(status);
+
+                if (status.status === "completed" || status.status === "failed") {
+                    return status;
+                }
+            } catch (error) {
+                options?.onTransientError?.(this.getPollingErrorMessage(error), lastStatus);
+
+                if (Date.now() - lastProgressAt >= stallTimeoutMs) {
+                    throw error;
+                }
+            }
+
+            await this.sleep(intervalMs);
         }
     }
 

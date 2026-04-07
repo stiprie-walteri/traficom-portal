@@ -265,6 +265,25 @@ export function ProjectView() {
             })
             setProjectEvaluationStatus(id, status)
           },
+          onTransientError: (message, lastStatus) => {
+            if (!lastStatus) return
+
+            setBlockingEvaluationStatus({
+              status: "running",
+              completed_count: lastStatus.completed_count,
+              total_tasks: lastStatus.total_tasks,
+              current_task: lastStatus.current_task,
+              status_message: message,
+              progress_percent: lastStatus.progress_percent,
+              estimated_seconds_remaining: lastStatus.estimated_seconds_remaining,
+              estimated_completion_at: lastStatus.estimated_completion_at,
+            })
+            setProjectEvaluationStatus(id, {
+              ...lastStatus,
+              status: "running",
+              status_message: message,
+            })
+          },
         }
       )
 
