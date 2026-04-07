@@ -7,6 +7,7 @@ import { DemoLayout } from "@/layouts/DemoLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
 import { ProjectView } from "@/pages/dashboard/ProjectView"
+import { DashboardHome } from "@/pages/dashboard/DashboardHome"
 import { Example1 } from "@/pages/dashboard/Example1"
 import { DemoProjectView } from "@/pages/demo/DemoProjectView"
 import { RealResults } from "@/pages/dashboard/RealResults"
@@ -25,7 +26,8 @@ function App() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           {/* Protected routes - require authentication */}
           <Route element={<ProtectedRoute />}>
-            <Route index element={<Upload />} />
+            <Route index element={<DashboardHome />} />
+            <Route path="upload" element={<Upload />} />
             <Route path="project/:id" element={<ProjectView />} />
             <Route path="document/:id" element={<DocumentView />} />
             <Route path="real-results" element={<RealResults />} />

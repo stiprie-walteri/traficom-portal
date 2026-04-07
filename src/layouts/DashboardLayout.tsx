@@ -55,6 +55,8 @@ export interface DashboardOutletContext {
   projects: ProjectItem[]
   selectedProjectId: string | null
   setSelectedProjectId: (projectId: string | null) => void
+  isWorkspaceLoading: boolean
+  openCreateProjectModal: () => void
   refreshWorkspaceData: () => Promise<void>
   projectEvaluationStatuses: Record<string, ProjectEvaluationStatus>
   refreshProjectEvaluationStatuses: () => Promise<void>
@@ -563,202 +565,206 @@ export function DashboardLayout() {
 
       {isCreateProjectOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             {isCreatingProject ? (
-              <ProjectProcessLoader
-                title="Setting up project"
-                description={createAndRunAnalysis
-                  ? "Creating the project, uploading documents, and waiting for the full project analysis to finish."
-                  : "Creating the project and uploading the selected documents."}
-                completedCount={createProjectEvaluationStatus?.completed_count}
-                totalTasks={createProjectEvaluationStatus?.total_tasks}
-                progressPercent={createProjectEvaluationStatus?.progress_percent}
-                statusMessage={createProjectEvaluationStatus?.status_message}
-                etaLabel={formatProjectEta(
-                  createProjectEvaluationStatus?.estimated_seconds_remaining,
-                  createProjectEvaluationStatus?.estimated_completion_at
-                )}
-                currentTask={createProjectStage}
-                steps={createProjectLoaderSteps}
-              />
+              <div className="overflow-y-auto p-4 sm:p-6">
+                <ProjectProcessLoader
+                  title="Setting up project"
+                  description={createAndRunAnalysis
+                    ? "Creating the project, uploading documents, and waiting for the full project analysis to finish."
+                    : "Creating the project and uploading the selected documents."}
+                  completedCount={createProjectEvaluationStatus?.completed_count}
+                  totalTasks={createProjectEvaluationStatus?.total_tasks}
+                  progressPercent={createProjectEvaluationStatus?.progress_percent}
+                  statusMessage={createProjectEvaluationStatus?.status_message}
+                  etaLabel={formatProjectEta(
+                    createProjectEvaluationStatus?.estimated_seconds_remaining,
+                    createProjectEvaluationStatus?.estimated_completion_at
+                  )}
+                  currentTask={createProjectStage}
+                  steps={createProjectLoaderSteps}
+                />
+              </div>
             ) : (
               <>
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">New Project</p>
-                <h2 className="mt-1 text-xl font-semibold text-foreground">Create a project</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Choose the legislation templates this project should be checked against.</p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => {
-                  if (!isCreatingProject) {
-                    setIsCreateProjectOpen(false)
-                    setCreateAndRunAnalysis(true)
-                    setNewProjectFiles([])
-                  }
-                }}
-                title="Close"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Project name</label>
-                <Input
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="e.g. Nexus MiCA Review"
-                  className="bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">Description</label>
-                <textarea
-                  value={newProjectDescription}
-                  onChange={(e) => setNewProjectDescription(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  placeholder="e.g. Programme of operations review"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium">Legislation templates</label>
-                <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  {legislationTemplates.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No legislation templates available.</p>
-                  ) : (
-                    legislationTemplates.map((template) => {
-                      const checked = selectedLegislationIds.includes(template.id)
-                      return (
-                        <label
-                          key={template.id}
-                          className={cn(
-                            "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors",
-                            checked ? "border-slate-400 bg-white" : "border-slate-200 bg-white/80 hover:border-slate-300"
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleLegislationTemplate(template.id)}
-                            className="mt-1 h-4 w-4 rounded border-slate-300"
-                          />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">{template.name}</p>
-                            <p className="mt-1 break-all text-xs text-muted-foreground">{template.id}</p>
-                          </div>
-                        </label>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-
-              <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-                <div className="pr-4">
-                  <p className="text-sm font-medium text-foreground">Run full project analysis after creation</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Start the complete project-wide AI check immediately after the project and documents are created.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCreateAndRunAnalysis((prev) => !prev)}
-                  className={cn(
-                    "relative h-7 w-12 rounded-full transition-colors",
-                    createAndRunAnalysis ? "bg-black" : "bg-slate-300"
-                  )}
-                  aria-pressed={createAndRunAnalysis}
-                >
-                  <span
-                    className={cn(
-                      "absolute top-1 h-5 w-5 rounded-full bg-white transition-transform",
-                      createAndRunAnalysis ? "left-6" : "left-1"
-                    )}
-                  />
-                </button>
-              </label>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label className="block text-sm font-medium">Documents</label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => createProjectUploadInputRef.current?.click()}
-                    disabled={isCreatingProject}
-                  >
-                    <FilePlus2 className="h-4 w-4" />
-                    Add PDFs
-                  </Button>
-                </div>
-                <input
-                  ref={createProjectUploadInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  className="hidden"
-                  onChange={handleNewProjectFilesSelected}
-                />
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  {newProjectFiles.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No documents selected yet. You can upload multiple PDFs at once.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {newProjectFiles.map((file) => (
-                        <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{file.name}</p>
-                            <p className="text-xs text-muted-foreground">{Math.round(file.size / 1024)} KB</p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() =>
-                              setNewProjectFiles((prev) =>
-                                prev.filter((candidate) => candidate !== file)
-                              )
-                            }
-                            disabled={isCreatingProject}
-                            title="Remove file"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">New Project</p>
+                      <h2 className="mt-1 text-xl font-semibold text-foreground">Create a project</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">Choose the legislation templates this project should be checked against.</p>
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => {
+                        if (!isCreatingProject) {
+                          setIsCreateProjectOpen(false)
+                          setCreateAndRunAnalysis(true)
+                          setNewProjectFiles([])
+                        }
+                      }}
+                      title="Close"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsCreateProjectOpen(false)
-                  setCreateAndRunAnalysis(true)
-                  setNewProjectFiles([])
-                }}
-                disabled={isCreatingProject}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void handleCreateProject()}
-                disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || isCreatingProject}
-              >
-                Create Project
-              </Button>
-            </div>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Project name</label>
+                      <Input
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        placeholder="e.g. Nexus MiCA Review"
+                        className="bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Description</label>
+                      <textarea
+                        value={newProjectDescription}
+                        onChange={(e) => setNewProjectDescription(e.target.value)}
+                        rows={3}
+                        className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        placeholder="e.g. Programme of operations review"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium">Legislation templates</label>
+                      <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                        {legislationTemplates.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No legislation templates available.</p>
+                        ) : (
+                          legislationTemplates.map((template) => {
+                            const checked = selectedLegislationIds.includes(template.id)
+                            return (
+                              <label
+                                key={template.id}
+                                className={cn(
+                                  "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors",
+                                  checked ? "border-slate-400 bg-white" : "border-slate-200 bg-white/80 hover:border-slate-300"
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleLegislationTemplate(template.id)}
+                                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                                />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium">{template.name}</p>
+                                  <p className="mt-1 break-all text-xs text-muted-foreground">{template.id}</p>
+                                </div>
+                              </label>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                      <div className="min-w-0 pr-2">
+                        <p className="text-sm font-medium text-foreground">Run full project analysis after creation</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Start the complete project-wide AI check immediately after the project and documents are created.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCreateAndRunAnalysis((prev) => !prev)}
+                        className={cn(
+                          "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+                          createAndRunAnalysis ? "bg-black" : "bg-slate-300"
+                        )}
+                        aria-pressed={createAndRunAnalysis}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-1 h-5 w-5 rounded-full bg-white transition-transform",
+                            createAndRunAnalysis ? "left-6" : "left-1"
+                          )}
+                        />
+                      </button>
+                    </label>
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <label className="block text-sm font-medium">Documents</label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => createProjectUploadInputRef.current?.click()}
+                          disabled={isCreatingProject}
+                        >
+                          <FilePlus2 className="h-4 w-4" />
+                          Add PDFs
+                        </Button>
+                      </div>
+                      <input
+                        ref={createProjectUploadInputRef}
+                        type="file"
+                        accept="application/pdf"
+                        multiple
+                        className="hidden"
+                        onChange={handleNewProjectFilesSelected}
+                      />
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                        {newProjectFiles.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No documents selected yet. You can upload multiple PDFs at once.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {newProjectFiles.map((file) => (
+                              <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">{file.name}</p>
+                                  <p className="text-xs text-muted-foreground">{Math.round(file.size / 1024)} KB</p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() =>
+                                    setNewProjectFiles((prev) =>
+                                      prev.filter((candidate) => candidate !== file)
+                                    )
+                                  }
+                                  disabled={isCreatingProject}
+                                  title="Remove file"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-4 sm:px-6">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsCreateProjectOpen(false)
+                        setCreateAndRunAnalysis(true)
+                        setNewProjectFiles([])
+                      }}
+                      disabled={isCreatingProject}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => void handleCreateProject()}
+                      disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || isCreatingProject}
+                    >
+                      Create Project
+                    </Button>
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -1074,6 +1080,8 @@ export function DashboardLayout() {
             projects,
             selectedProjectId,
             setSelectedProjectId,
+            isWorkspaceLoading,
+            openCreateProjectModal: () => setIsCreateProjectOpen(true),
             refreshWorkspaceData,
             projectEvaluationStatuses,
             refreshProjectEvaluationStatuses,
