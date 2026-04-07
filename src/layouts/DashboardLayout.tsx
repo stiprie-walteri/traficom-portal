@@ -153,6 +153,11 @@ export function DashboardLayout() {
   const [createProjectStage, setCreateProjectStage] = useState<string | null>(null)
   const [createProjectEvaluationStatus, setCreateProjectEvaluationStatus] = useState<ProjectEvaluationStatus | null>(null)
   const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(null)
+  const [projectUploadState, setProjectUploadState] = useState<{
+    projectId: string
+    projectName: string
+    fileName: string
+  } | null>(null)
   const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(true)
   const [projectEvaluationStatuses, setProjectEvaluationStatuses] = useState<Record<string, ProjectEvaluationStatus>>({})
   const uploadInputRef = useRef<HTMLInputElement>(null)
@@ -246,17 +251,25 @@ export function DashboardLayout() {
           const status = await storageService.getProjectEvaluationStatus(organizationId, project.project_id)
           return [project.project_id, status] as const
         } catch {
-          return null
+          return [project.project_id, null] as const
         }
       })
     )
 
-    const next: Record<string, ProjectEvaluationStatus> = {}
-    for (const entry of entries) {
-      if (!entry) continue
-      next[entry[0]] = entry[1]
-    }
-    setProjectEvaluationStatuses(next)
+    setProjectEvaluationStatuses((prev) => {
+      const next: Record<string, ProjectEvaluationStatus> = {}
+
+      for (const project of projects) {
+        const match = entries.find((entry) => entry?.[0] === project.project_id)
+        if (match?.[1]) {
+          next[project.project_id] = match[1]
+        } else if (prev[project.project_id]) {
+          next[project.project_id] = prev[project.project_id]
+        }
+      }
+
+      return next
+    })
   }, [organizationId, projects, storageService])
 
   const setProjectEvaluationStatus = useCallback((projectId: string, status: ProjectEvaluationStatus | null) => {
@@ -369,8 +382,23 @@ export function DashboardLayout() {
               setCreateProjectStage(
                 getShortProjectStatus(status)
                 || `Running project analysis (${status.completed_count}/${status.total_tasks || 1})...`
-              )
+                )
               setProjectEvaluationStatus(project.project_id, status)
+            },
+            onTransientError: (message, lastStatus) => {
+              if (!lastStatus) return
+
+              setCreateProjectEvaluationStatus({
+                ...lastStatus,
+                status: "running",
+                status_message: message,
+              })
+              setCreateProjectStage(message)
+              setProjectEvaluationStatus(project.project_id, {
+                ...lastStatus,
+                status: "running",
+                status_message: message,
+              })
             },
           }
         )
@@ -455,6 +483,15 @@ export function DashboardLayout() {
 
     if (!file || !projectId || !organizationId) return
 
+    const project = projects.find((item) => item.project_id === projectId)
+    if (!project) return
+
+    setProjectUploadState({
+      projectId,
+      projectName: project.name || "Untitled project",
+      fileName: file.name,
+    })
+
     try {
       const upload = await storageService.uploadDocument({
         organizationId,
@@ -471,6 +508,7 @@ export function DashboardLayout() {
     } finally {
       event.target.value = ""
       setUploadingProjectId(null)
+      setProjectUploadState(null)
     }
   }
 
@@ -676,15 +714,30 @@ export function DashboardLayout() {
                         type="button"
                         onClick={() => setCreateAndRunAnalysis((prev) => !prev)}
                         className={cn(
-                          "relative h-7 w-12 shrink-0 rounded-full transition-colors",
-                          createAndRunAnalysis ? "bg-black" : "bg-slate-300"
+                          "relative flex h-11 w-[92px] shrink-0 items-center rounded-full border p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20",
+                          createAndRunAnalysis
+                            ? "border-slate-900 bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                            : "border-slate-300 bg-white"
                         )}
                         aria-pressed={createAndRunAnalysis}
+                        aria-label="Run full project analysis after creation"
                       >
                         <span
                           className={cn(
-                            "absolute top-1 h-5 w-5 rounded-full bg-white transition-transform",
-                            createAndRunAnalysis ? "left-6" : "left-1"
+                            "pointer-events-none absolute inset-y-1 left-1 w-[44px] rounded-full transition-transform duration-200",
+                            createAndRunAnalysis ? "translate-x-[40px] bg-white" : "translate-x-0 bg-slate-900"
+                          )}
+                        />
+                        <span className="relative z-10 flex w-full items-center justify-between px-2 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                          <span className={cn(createAndRunAnalysis ? "text-slate-500" : "text-white")}>Off</span>
+                          <span className={cn(createAndRunAnalysis ? "text-slate-900" : "text-slate-400")}>On</span>
+                        </span>
+                        <span
+                          className={cn(
+                            "absolute top-1/2 z-10 h-7 w-7 -translate-y-1/2 rounded-full border shadow-sm transition-all duration-200",
+                            createAndRunAnalysis
+                              ? "left-[58px] border-slate-200 bg-white"
+                              : "left-1 border-slate-900 bg-slate-900"
                           )}
                         />
                       </button>
@@ -767,6 +820,26 @@ export function DashboardLayout() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {projectUploadState && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="overflow-y-auto p-4 sm:p-6">
+              <ProjectProcessLoader
+                title="Uploading document"
+                description={`Adding ${projectUploadState.fileName} to ${projectUploadState.projectName}.`}
+                currentTask="Preparing document for this project"
+                steps={[
+                  {
+                    label: `Upload ${projectUploadState.fileName}`,
+                    status: "active",
+                  },
+                ]}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -878,6 +951,7 @@ export function DashboardLayout() {
                     const isSelected = selectedProjectId === project.project_id
                     const evaluationStatus = projectEvaluationStatuses[project.project_id]
                     const isRunning = evaluationStatus?.status === "running"
+                    const isUploading = projectUploadState?.projectId === project.project_id
                     const shortStatus = getShortProjectStatus(evaluationStatus)
                     const etaLabel = formatProjectEta(
                       evaluationStatus?.estimated_seconds_remaining,
@@ -930,7 +1004,20 @@ export function DashboardLayout() {
                             ) : (
                               <p className="mt-1 text-xs text-muted-foreground">Project folder for related submission documents.</p>
                             )}
-                            {isRunning && (
+                            {isUploading ? (
+                              <div className="mt-2 space-y-1">
+                                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                                  <span className="truncate">Uploading document...</span>
+                                  <span>Processing</span>
+                                </div>
+                                <div className="h-1.5 w-full rounded-full bg-slate-200">
+                                  <div className="h-1.5 w-1/3 rounded-full bg-primary animate-pulse" />
+                                </div>
+                                <p className="truncate text-[10px] text-muted-foreground">
+                                  {projectUploadState.fileName}
+                                </p>
+                              </div>
+                            ) : isRunning && (
                               <div className="mt-2 space-y-1">
                                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                                   <span className="truncate">{shortStatus}</span>
@@ -958,7 +1045,7 @@ export function DashboardLayout() {
                               className="rounded-lg"
                               onClick={() => handleProjectUploadClick(project.project_id)}
                               title="Upload document to project"
-                              disabled={isRunning}
+                              disabled={isRunning || isUploading || !!projectUploadState}
                             >
                               <FilePlus2 className="h-4 w-4" />
                             </Button>
@@ -968,7 +1055,7 @@ export function DashboardLayout() {
                               className="rounded-lg"
                               onClick={() => void handleDeleteProject(project)}
                               title="Delete project"
-                              disabled={isRunning}
+                              disabled={isRunning || isUploading || !!projectUploadState}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -986,7 +1073,7 @@ export function DashboardLayout() {
                                     isActive={isActivePath}
                                     onDeleteDocument={handleDeleteDocument}
                                     onNavClick={handleNavClick}
-                                    disabled={isRunning}
+                                    disabled={isRunning || isUploading}
                                   />
                                 ))}
                               </div>

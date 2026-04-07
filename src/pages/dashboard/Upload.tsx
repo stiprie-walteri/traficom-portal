@@ -262,34 +262,56 @@ export function Upload() {
     setEvalJobStatus(null)
     try {
       const finalTasks = tasks.length > 0 ? tasks : undefined
-      await storageService.startEvaluation(organizationId, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
+      const job = await storageService.startEvaluation(organizationId, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
       
       setIsPollingStatuses(true)
 
-      const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-      let isDone = false;
-      
-      while (!isDone) {
-        await delay(3000);
-        try {
-          const status = await storageService.getEvaluationStatus(organizationId, evalDocId);
-          setEvalJobStatus(status);
-          if (status.results) {
-              setEvalResults(status.results);
-          }
-          if (status.status === "completed" || status.status === "failed") {
-              isDone = true;
-              if (status.status === "failed") {
-                  toast({ variant: "destructive", title: "Evaluation failed", description: status.error || "The AI agent encountered an error." });
-              }
-          }
-        } catch (pollErr) {
-          console.error("Polling failed:", pollErr);
+      setEvalJobStatus({
+        job_id: job.job_id,
+        status: "running",
+        total_tasks: 0,
+        completed_count: 0,
+        current_task: ["Preparing analysis"],
+        status_message: "Preparing analysis",
+        progress_percent: 0,
+        estimated_seconds_remaining: null,
+        estimated_completion_at: null,
+        results: [],
+        error: null,
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      const finalStatus = await storageService.waitForEvaluationCompletion(
+        organizationId,
+        evalDocId,
+        {
+          intervalMs: 3000,
+          onProgress: (status) => {
+            setEvalJobStatus(status)
+            if (status.results) {
+              setEvalResults(status.results)
+            }
+          },
+          onTransientError: (message, lastStatus) => {
+            if (!lastStatus) return
+
+            setEvalJobStatus({
+              ...lastStatus,
+              status: "running",
+              status_message: message,
+              error: null,
+            })
+          },
         }
+      )
+
+      if (finalStatus.status === "failed") {
+        toast({ variant: "destructive", title: "Evaluation failed", description: finalStatus.error || "The AI agent encountered an error." })
       }
     } catch (err) {
       console.error("Evaluation failed to start:", err)
-      toast({ variant: "destructive", title: "Evaluation failed", description: "Could not start evaluation job." })
+      toast({ variant: "destructive", title: "Evaluation failed", description: "Could not complete evaluation after repeated retries." })
     } finally {
       setIsEvaluating(false)
     }
