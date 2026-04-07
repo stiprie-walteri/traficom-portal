@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom"
+import { useOutletContext, useParams } from "react-router-dom"
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { getAnalysisResult, hasAnalysisResult } from "@/lib/mockData"
@@ -8,6 +8,7 @@ import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService } from "@/lib/documentStorageService"
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { type NormalizedIssue, type ParseResult } from "@/lib/documentService"
+import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
 /** Convert a raw compliance result JSON (as stored in DB) into a ParseResult for RealResults. */
 function buildParseResult(raw: Record<string, unknown>): ParseResult {
@@ -55,6 +56,7 @@ export function DocumentView() {
   const { user } = useUser()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
+  const { organizationId } = useOutletContext<DashboardOutletContext>()
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +69,7 @@ export function DocumentView() {
 
   useEffect(() => {
     const fetchDoc = async () => {
-      if (!id || !user) return
+      if (!id || !user || !organizationId) return
       setIsLoading(true)
       setError(null)
 
@@ -80,7 +82,7 @@ export function DocumentView() {
 
       // 2. Fetch from storage API
       try {
-        const response = await storageService.getDocument(user.id, id)
+        const response = await storageService.getDocument(organizationId, id)
         const complianceResult = response.version?.compliance_result
 
         if (complianceResult) {
@@ -89,7 +91,7 @@ export function DocumentView() {
             parseResult: buildParseResult(complianceResult as Record<string, unknown>),
             filename: (response.document.title || id) + ".pdf",
             document_id: id,
-            organization_id: user.id,
+            organization_id: organizationId,
           })
         } else {
           // Document exists but no compliance result yet — show markdown only
@@ -106,7 +108,7 @@ export function DocumentView() {
             },
             filename: (response.document.title || id) + ".pdf",
             document_id: id,
-            organization_id: user.id,
+            organization_id: organizationId,
           })
         }
       } catch (err: unknown) {
@@ -118,7 +120,7 @@ export function DocumentView() {
     }
 
     fetchDoc()
-  }, [id, user, storageService])
+  }, [id, user, organizationId, storageService])
 
   if (isLoading) {
     return <div className="h-screen flex items-center justify-center"><ChessLoaderLong /></div>
@@ -135,7 +137,7 @@ export function DocumentView() {
   }
 
   if (realData) {
-    return <RealResults storedData={realData} />
+    return <RealResults storedData={realData} documentOnly />
   }
 
   return (

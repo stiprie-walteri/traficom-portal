@@ -1,8 +1,9 @@
 import { useAuth } from "@clerk/clerk-react"
-import { Navigate, Outlet } from "react-router-dom"
+import { Navigate, Outlet, useOutletContext } from "react-router-dom"
 
 export function ProtectedRoute() {
     const { isSignedIn, isLoaded } = useAuth()
+    const context = useOutletContext()
 
     if (!isLoaded) {
         return null
@@ -12,5 +13,5 @@ export function ProtectedRoute() {
         return <Navigate to="/unauthorized" replace />
     }
 
-    return <Outlet />
+    return <Outlet context={context} />
 }

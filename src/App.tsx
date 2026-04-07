@@ -3,9 +3,12 @@ import { MainLayout } from "@/layouts/MainLayout"
 import { LandingPage } from "@/pages/LandingPage"
 import { env } from "@/lib/env"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
+import { DemoLayout } from "@/layouts/DemoLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
+import { ProjectView } from "@/pages/dashboard/ProjectView"
 import { Example1 } from "@/pages/dashboard/Example1"
+import { DemoProjectView } from "@/pages/demo/DemoProjectView"
 import { RealResults } from "@/pages/dashboard/RealResults"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { UnauthorizedPage } from "@/pages/UnauthorizedPage"
@@ -20,15 +23,19 @@ function App() {
 
         {/* Dashboard Routes */}
         <Route path="/dashboard" element={<DashboardLayout />}>
-          {/* Public route - accessible without auth */}
-          <Route path="example-1" element={<Example1 />} />
-
           {/* Protected routes - require authentication */}
           <Route element={<ProtectedRoute />}>
             <Route index element={<Upload />} />
+            <Route path="project/:id" element={<ProjectView />} />
             <Route path="document/:id" element={<DocumentView />} />
             <Route path="real-results" element={<RealResults />} />
           </Route>
+        </Route>
+
+        <Route path="/demo" element={<DemoLayout />}>
+          <Route index element={<Navigate to="/demo/project/jet-support" replace />} />
+          <Route path="project/jet-support" element={<DemoProjectView />} />
+          <Route path="document/jet-support" element={<Example1 />} />
         </Route>
 
         {/* Unauthorized page */}

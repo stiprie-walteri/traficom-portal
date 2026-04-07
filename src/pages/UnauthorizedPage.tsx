@@ -35,21 +35,21 @@ export function UnauthorizedPage() {
                         </Button>
                     </SignInButton>
 
-                    <Link to="/dashboard/example-1">
+                    <Link to="/demo">
                         <Button
                             variant="outline"
                             size="lg"
                             className="w-full gap-2 mt-2 border-gray-300 hover:bg-gray-100"
                         >
                             <FileText className="h-4 w-4" />
-                            View Example Document
+                            Open Demo Portal
                         </Button>
                     </Link>
                 </div>
 
                 {/* Footer */}
                 <p className="text-xs text-gray-400">
-                    You can browse the example document without signing in.
+                    You can browse the demo portal without signing in.
                 </p>
             </div>
         </div>

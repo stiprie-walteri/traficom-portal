@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useOutletContext } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -19,10 +19,10 @@ import {
 } from "lucide-react"
 import { UploadChessLoader, InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
-import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, StoredDocument, EvaluateTaskResult, EvaluationStatus, DocumentEvaluationStatus } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
+import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
 type UploadStep = "idle" | "uploading" | "done" | "error"
 
@@ -50,6 +50,7 @@ export function Upload() {
   const [isQueryingChunks, setIsQueryingChunks] = useState(false)
   const [queryChunksResult, setQueryChunksResult] = useState<any>(null)
   const [availableDocuments, setAvailableDocuments] = useState<StoredDocument[]>([])
+  const [projectId, setProjectId] = useState("")
 
   // Delete state
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
@@ -70,10 +71,14 @@ export function Upload() {
   const [isPollingStatuses, setIsPollingStatuses] = useState(false)
 
   const navigate = useNavigate()
-  const { user } = useUser()
   const { toast } = useAppAlert()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
+  const { organizationId, projects, selectedProjectId, setSelectedProjectId } = useOutletContext<DashboardOutletContext>()
+
+  useEffect(() => {
+    setProjectId(selectedProjectId ?? "")
+  }, [selectedProjectId])
 
   const isProcessing = useMemo(() =>
     step === "uploading" || isQueryingChunks || isEvaluating || !!deletingDocId,
@@ -81,9 +86,9 @@ export function Upload() {
   )
 
   const fetchStatuses = useCallback(async () => {
-    if (!user?.id) return false
+    if (!organizationId) return false
     try {
-      const statuses = await storageService.getEvaluationStatuses(user.id)
+      const statuses = await storageService.getEvaluationStatuses(organizationId)
       const statusMap: Record<string, DocumentEvaluationStatus> = {}
       let anyAnalyzing = false
       for (const s of statuses) {
@@ -96,12 +101,12 @@ export function Upload() {
       console.error("Failed to fetch evaluation statuses:", err)
       return false
     }
-  }, [user?.id, storageService])
+  }, [organizationId, storageService])
 
   const refreshDocuments = useCallback(async () => {
-    if (user?.id) {
+    if (organizationId) {
       try {
-        const res = await storageService.listDocuments(user.id)
+        const res = await storageService.listDocuments(organizationId)
         setAvailableDocuments(res?.items || [])
         // Fetch statuses immediately
         const shouldPoll = await fetchStatuses()
@@ -112,7 +117,7 @@ export function Upload() {
         console.error(err)
       }
     }
-  }, [user?.id, storageService, fetchStatuses, isPollingStatuses])
+  }, [organizationId, storageService, fetchStatuses, isPollingStatuses])
 
   // Fetch available documents for the dropdown
   useEffect(() => {
@@ -147,7 +152,7 @@ export function Upload() {
 
   // Fetch previous compliance result when a document is selected
   useEffect(() => {
-    if (!user?.id || !evalDocId) {
+    if (!organizationId || !evalDocId) {
       // Don't auto-clear evalResults here if they just ran an evaluation
       return
     }
@@ -157,7 +162,7 @@ export function Upload() {
     
     const fetchPrevCompliance = async () => {
       try {
-        const res = await storageService.getCompliance(user.id, evalDocId);
+        const res = await storageService.getCompliance(organizationId, evalDocId);
         if (res.compliance_result) {
           const actualResults = Array.isArray(res.compliance_result)
             ? res.compliance_result
@@ -172,7 +177,7 @@ export function Upload() {
       }
     };
     fetchPrevCompliance();
-  }, [user?.id, evalDocId, storageService]);
+  }, [organizationId, evalDocId, storageService]);
 
   const handleFileSelect = (file: File) => {
     if (file.type === "application/pdf") {
@@ -200,13 +205,13 @@ export function Upload() {
   }
 
   const handleDeleteDocument = async (doc: StoredDocument) => {
-    if (!user?.id || !doc.document_id) return
+    if (!organizationId || !doc.document_id) return
     const confirmDelete = confirm(`Are you sure you want to delete ${doc.title || doc.document_id}?`)
     if (!confirmDelete) return
 
     setDeletingDocId(doc.document_id)
     try {
-      await storageService.deleteDocument(user.id, doc.document_id)
+      await storageService.deleteDocument(organizationId, doc.document_id)
       toast({ title: "Document deleted", description: "Document and all its data were removed." })
       refreshDocuments()
       window.dispatchEvent(new Event("documentListUpdated"))
@@ -238,7 +243,7 @@ export function Upload() {
   }
 
   const handleEvaluate = async () => {
-    if (!user?.id || !evalDocId || !evalVersionNo) {
+    if (!organizationId || !evalDocId || !evalVersionNo) {
       toast({ variant: "warning", title: "Missing info", description: "Please select a document and version." })
       return
     }
@@ -257,7 +262,7 @@ export function Upload() {
     setEvalJobStatus(null)
     try {
       const finalTasks = tasks.length > 0 ? tasks : undefined
-      await storageService.startEvaluation(user.id, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
+      await storageService.startEvaluation(organizationId, evalDocId, parseInt(evalVersionNo), finalTasks, selectedTemplateId || undefined)
       
       setIsPollingStatuses(true)
 
@@ -267,7 +272,7 @@ export function Upload() {
       while (!isDone) {
         await delay(3000);
         try {
-          const status = await storageService.getEvaluationStatus(user.id, evalDocId);
+          const status = await storageService.getEvaluationStatus(organizationId, evalDocId);
           setEvalJobStatus(status);
           if (status.results) {
               setEvalResults(status.results);
@@ -291,15 +296,15 @@ export function Upload() {
   }
 
   const handleUpload = async () => {
-    if (!selectedFile || !user) return
+    if (!selectedFile || !organizationId || !projectId) return
     setErrorMsg(null)
 
     setStep("uploading")
     let uploadResult: { document_id: string; version_no: number; organization_id?: string }
     try {
       uploadResult = await storageService.uploadDocument({
-        organizationId: user.id,
-        actorUserId: user.id,
+        organizationId,
+        projectId,
         file: selectedFile,
         title: docTitle || undefined,
         message: docMessage || undefined,
@@ -418,8 +423,8 @@ export function Upload() {
         </div>
 
         <div className="mb-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
-          <h1 className="text-2xl mb-2">Document Management</h1>
-          <p className="text-sm text-muted-foreground italic">Upload your PDF to store it and run compliance analysis</p>
+          <h1 className="text-2xl mb-2">Project Workspace</h1>
+          <p className="text-sm text-muted-foreground italic">Upload PDFs into a project and run compliance analysis across shared document sets</p>
         </div>
 
         <div className="space-y-6 max-w-3xl mx-auto mb-16">
@@ -488,6 +493,24 @@ export function Upload() {
                     {!isProcessing && (
                       <div className="mt-4 space-y-4">
                         <div>
+                          <label className="text-sm font-medium mb-1 block">Project</label>
+                          <select
+                            value={projectId}
+                            onChange={(e) => {
+                              setProjectId(e.target.value)
+                              setSelectedProjectId(e.target.value || null)
+                            }}
+                            className="w-full text-sm p-3 rounded border focus:outline-none focus:ring-1 focus:ring-primary bg-transparent"
+                          >
+                            <option value="">{projects.length === 0 ? "Create a project from the left sidebar first" : "Select project..."}</option>
+                            {projects.map((project) => (
+                              <option key={project.project_id} value={project.project_id}>
+                                {project.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
                           <label className="text-sm font-medium mb-1 block">Document Title</label>
                           <input
                             type="text"
@@ -516,9 +539,9 @@ export function Upload() {
               {/* Action / Progress */}
               <div className="flex gap-3">
                 {!isProcessing && step !== "error" ? (
-                  <Button onClick={handleUpload} className="flex-1 bg-primary text-primary-foreground" size="lg">
+                  <Button onClick={handleUpload} className="flex-1 bg-primary text-primary-foreground" size="lg" disabled={!projectId}>
                     <UploadIcon className="mr-2 h-4 w-4" />
-                    Upload & Analyse
+                    Upload to Project
                   </Button>
                 ) : step === "error" ? (
                   <div className="flex-1 py-5 px-6 flex items-center gap-3 border border-red-500/40 rounded-sm bg-red-500/5">
@@ -605,7 +628,7 @@ export function Upload() {
               <Button
                 onClick={async () => {
                   const selectedDoc = availableDocuments.find(d => d.document_id === queryDocId);
-                  const orgIdToUse = selectedDoc?.organization_id || user?.id;
+                  const orgIdToUse = selectedDoc?.organization_id || organizationId;
 
                   if (!orgIdToUse || !queryDocId || !queryVersionNo) {
                     toast({
@@ -663,11 +686,11 @@ export function Upload() {
           </div>
         </div>
 
-        {/* Manage Documents Section */}
+        {/* Workspace Documents Section */}
         {availableDocuments.length > 0 && (
           <>
             <div className="mb-4 mt-8 text-center max-w-3xl mx-auto font-['Courier_New',monospace]">
-              <h2 className="text-xl mb-2 text-muted-foreground">Manage Documents</h2>
+              <h2 className="text-xl mb-2 text-muted-foreground">Workspace Documents</h2>
             </div>
             <div className="space-y-2 max-w-3xl mx-auto mb-12">
               {availableDocuments.map(doc => {

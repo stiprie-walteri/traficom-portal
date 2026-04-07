@@ -1,107 +1,132 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
-import { Upload, FileText, Search, PanelLeftClose, Menu, LogIn, Trash2, FolderPlus } from "lucide-react"
-import { PanelRightClose } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  FilePlus2,
+  FileText,
+  FolderPlus,
+  LogIn,
+  Menu,
+  PanelLeftClose,
+  PanelRightClose,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import logoSvg from "@/assets/logo.svg"
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService, StoredDocument, FolderItem } from "@/lib/documentStorageService"
+import { DocumentStorageService, LegislationTemplate, ProjectEvaluationStatus, ProjectItem, StoredDocument } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent } from "@dnd-kit/core"
-import { useDraggable } from "@dnd-kit/core"
-import { SidebarFolder } from "@/components/SidebarFolder"
+import { ProjectProcessLoader } from "@/components/ProjectProcessLoader"
 
-// Draggable document row component
-function DraggableDocRow({
+function formatProjectEta(secondsRemaining?: number | null, completionAt?: string | null) {
+  if (typeof secondsRemaining === "number" && secondsRemaining > 0) {
+    const minutes = Math.ceil(secondsRemaining / 60)
+    return minutes <= 1 ? "About 1 min left" : `About ${minutes} min left`
+  }
+
+  if (completionAt) {
+    const date = new Date(completionAt)
+    if (!Number.isNaN(date.getTime())) {
+      return `ETA ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    }
+  }
+
+  return null
+}
+
+function getShortProjectStatus(status?: ProjectEvaluationStatus | null) {
+  if (!status) return null
+
+  const fromMessage = status.status_message?.replace(/^Running\s+/i, "").trim()
+  const fromTask = status.current_task?.[0]?.trim()
+
+  return fromMessage || fromTask || "Preparing project analysis"
+}
+
+export interface DashboardOutletContext {
+  organizationId: string | null
+  projects: ProjectItem[]
+  selectedProjectId: string | null
+  setSelectedProjectId: (projectId: string | null) => void
+  refreshWorkspaceData: () => Promise<void>
+  projectEvaluationStatuses: Record<string, ProjectEvaluationStatus>
+  refreshProjectEvaluationStatuses: () => Promise<void>
+  setProjectEvaluationStatus: (projectId: string, status: ProjectEvaluationStatus | null) => void
+}
+
+function SidebarDocumentRow({
   doc,
   isActive,
   onDeleteDocument,
   onNavClick,
+  disabled = false,
 }: {
   doc: StoredDocument
   isActive: (path: string) => boolean
   onDeleteDocument: (docId: string) => void
   onNavClick: () => void
+  disabled?: boolean
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: doc.document_id })
   const docPath = `/dashboard/document/${doc.document_id}`
 
   return (
-    <div
-      ref={setNodeRef}
-      className={cn("group relative", isDragging && "opacity-40")}
-      {...attributes}
-      {...listeners}
+    <Link
+      to={disabled ? "#" : docPath}
+      onClick={(event) => {
+        if (disabled) {
+          event.preventDefault()
+          return
+        }
+        onNavClick()
+      }}
+      aria-disabled={disabled}
+      className={disabled ? "pointer-events-none opacity-60" : undefined}
     >
-      <Link to={docPath} onClick={onNavClick}>
-        <div
-          className={cn(
-            "px-3 py-2.5 transition-all duration-200 cursor-pointer rounded-sm overflow-hidden",
-            isActive(docPath)
-              ? "bg-[hsl(var(--sidebar-active))]"
-              : "hover:bg-[hsl(var(--sidebar-hover))]"
-          )}
-        >
-          <div className="flex items-start justify-between gap-2 mb-0.5 overflow-hidden">
-            <h3 className="text-sm font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
-              {doc.title || "Untitled"}
-            </h3>
-          </div>
-          <div className="flex items-center justify-between overflow-hidden">
-            <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-              {new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteDocument(doc.document_id) }}
-              title="Delete document"
-            >
-              <Trash2 className="h-3 w-3 text-muted-foreground" />
-            </Button>
-          </div>
+      <div
+        className={cn(
+          "group flex items-start gap-2 rounded-md px-2 py-2 transition-colors",
+          isActive(docPath)
+            ? "bg-[hsl(var(--sidebar-active))]"
+            : "hover:bg-[hsl(var(--sidebar-hover))]"
+        )}
+      >
+        <FileText className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{doc.title || "Untitled"}</p>
+          <p className="text-xs text-muted-foreground">
+            {new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          </p>
         </div>
-      </Link>
-    </div>
-  )
-}
-
-// Droppable "unfiled" zone at the bottom
-function UnfiledDropZone({
-  documents,
-  isActive,
-  onDeleteDocument,
-  onNavClick,
-}: {
-  documents: StoredDocument[]
-  isActive: (path: string) => boolean
-  onDeleteDocument: (docId: string) => void
-  onNavClick: () => void
-}) {
-  return (
-    <div id="unfiled" className="space-y-0.5">
-      {documents.map((doc) => (
-        <DraggableDocRow
-          key={doc.document_id}
-          doc={doc}
-          isActive={isActive}
-          onDeleteDocument={onDeleteDocument}
-          onNavClick={onNavClick}
-        />
-      ))}
-    </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="opacity-0 transition-opacity group-hover:opacity-100"
+          disabled={disabled}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onDeleteDocument(doc.document_id)
+          }}
+          title="Delete document"
+        >
+          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+      </div>
+    </Link>
   )
 }
 
 export function DashboardLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { isSignedIn, isLoaded } = useAuth()
+  const { isSignedIn } = useAuth()
   const { user } = useUser()
   const { toast, confirm } = useAppAlert()
   const apiClient = useApiClient()
@@ -109,40 +134,158 @@ export function DashboardLayout() {
 
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [organizationId, setOrganizationId] = useState<string | null>(null)
+  const [projects, setProjects] = useState<ProjectItem[]>([])
   const [documents, setDocuments] = useState<StoredDocument[]>([])
-  const [folders, setFolders] = useState<FolderItem[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({})
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false)
+  const [newProjectName, setNewProjectName] = useState("")
+  const [newProjectDescription, setNewProjectDescription] = useState("")
+  const [legislationTemplates, setLegislationTemplates] = useState<LegislationTemplate[]>([])
+  const [selectedLegislationIds, setSelectedLegislationIds] = useState<string[]>([])
+  const [newProjectFiles, setNewProjectFiles] = useState<File[]>([])
+  const [createAndRunAnalysis, setCreateAndRunAnalysis] = useState(true)
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
+  const [createProjectStage, setCreateProjectStage] = useState<string | null>(null)
+  const [createProjectEvaluationStatus, setCreateProjectEvaluationStatus] = useState<ProjectEvaluationStatus | null>(null)
+  const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(null)
+  const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(true)
+  const [projectEvaluationStatuses, setProjectEvaluationStatuses] = useState<Record<string, ProjectEvaluationStatus>>({})
+  const uploadInputRef = useRef<HTMLInputElement>(null)
+  const createProjectUploadInputRef = useRef<HTMLInputElement>(null)
 
-  const refreshDocuments = useCallback(() => {
-    if (user?.id) {
-      storageService.listDocuments(user.id)
-        .then(res => setDocuments(res?.items || []))
-        .catch(console.error)
+  const refreshWorkspaceData = useCallback(async () => {
+    if (!isSignedIn) {
+      setOrganizationId(null)
+      setProjects([])
+      setDocuments([])
+      setIsWorkspaceLoading(false)
+      return
     }
-  }, [user?.id, storageService])
 
-  const refreshFolders = useCallback(() => {
-    if (user?.id) {
-      storageService.listFolders(user.id)
-        .then(setFolders)
-        .catch(console.error)
+    setIsWorkspaceLoading(true)
+    try {
+      const me = await storageService.getMe()
+      setOrganizationId(me.organization_id)
+
+      const [projectItems, documentItems] = await Promise.all([
+        storageService.listProjects(me.organization_id),
+        storageService.listDocuments(me.organization_id),
+      ])
+
+      setProjects(Array.isArray(projectItems) ? projectItems : [])
+      setDocuments(Array.isArray(documentItems?.items) ? documentItems.items : [])
+
+      setExpandedProjects((prev) => {
+        const next = { ...prev }
+        for (const project of projectItems) {
+          if (next[project.project_id] === undefined) {
+            next[project.project_id] = true
+          }
+        }
+        return next
+      })
+
+      setSelectedProjectId((prev) => {
+        if (prev && projectItems.some((project) => project.project_id === prev)) {
+          return prev
+        }
+        return projectItems[0]?.project_id ?? null
+      })
+    } catch (error) {
+      console.error(error)
+      setProjects([])
+      setDocuments([])
+      toast({
+        variant: "destructive",
+        title: "Workspace unavailable",
+        description: "Could not load projects and documents.",
+      })
+    } finally {
+      setIsWorkspaceLoading(false)
     }
-  }, [user?.id, storageService])
+  }, [isSignedIn, storageService, toast])
 
   useEffect(() => {
-    refreshDocuments()
-    refreshFolders()
-  }, [location.pathname, refreshDocuments, refreshFolders])
+    void refreshWorkspaceData()
+  }, [refreshWorkspaceData])
 
   useEffect(() => {
     const handleDocumentUpdate = () => {
-      refreshDocuments()
-      refreshFolders()
+      void refreshWorkspaceData()
     }
+
     window.addEventListener("documentListUpdated", handleDocumentUpdate)
     return () => window.removeEventListener("documentListUpdated", handleDocumentUpdate)
-  }, [refreshDocuments, refreshFolders])
+  }, [refreshWorkspaceData])
+
+  useEffect(() => {
+    if (!isSignedIn) return
+
+    storageService.getTemplates()
+      .then((response) => setLegislationTemplates(response.templates || []))
+      .catch((error) => {
+        console.error(error)
+        setLegislationTemplates([])
+      })
+  }, [isSignedIn, storageService])
+
+  const refreshProjectEvaluationStatuses = useCallback(async () => {
+    if (!organizationId || projects.length === 0) {
+      setProjectEvaluationStatuses({})
+      return
+    }
+
+    const entries = await Promise.all(
+      projects.map(async (project) => {
+        try {
+          const status = await storageService.getProjectEvaluationStatus(organizationId, project.project_id)
+          return [project.project_id, status] as const
+        } catch {
+          return null
+        }
+      })
+    )
+
+    const next: Record<string, ProjectEvaluationStatus> = {}
+    for (const entry of entries) {
+      if (!entry) continue
+      next[entry[0]] = entry[1]
+    }
+    setProjectEvaluationStatuses(next)
+  }, [organizationId, projects, storageService])
+
+  const setProjectEvaluationStatus = useCallback((projectId: string, status: ProjectEvaluationStatus | null) => {
+    setProjectEvaluationStatuses((prev) => {
+      if (!status) {
+        const next = { ...prev }
+        delete next[projectId]
+        return next
+      }
+
+      return {
+        ...prev,
+        [projectId]: status,
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    void refreshProjectEvaluationStatuses()
+  }, [refreshProjectEvaluationStatuses])
+
+  useEffect(() => {
+    const runningProjects = Object.values(projectEvaluationStatuses).filter((status) => status.status === "running")
+    if (runningProjects.length === 0) return
+
+    const timeout = window.setTimeout(() => {
+      void refreshProjectEvaluationStatuses()
+    }, 4000)
+
+    return () => window.clearTimeout(timeout)
+  }, [projectEvaluationStatuses, refreshProjectEvaluationStatuses])
 
   const isActivePath = (path: string) => {
     if (path === "/dashboard" && location.pathname === "/dashboard") return true
@@ -153,7 +296,8 @@ export function DashboardLayout() {
   const handleNavClick = () => setIsMobileOpen(false)
 
   const handleDeleteDocument = async (docId: string) => {
-    if (!user?.id) return
+    if (!organizationId) return
+
     const ok = await confirm({
       title: "Delete this document?",
       description: "This action cannot be undone.",
@@ -161,9 +305,11 @@ export function DashboardLayout() {
       cancelLabel: "Cancel",
       destructive: true,
     })
+
     if (!ok) return
+
     try {
-      await storageService.deleteDocument(user.id, docId)
+      await storageService.deleteDocument(organizationId, docId)
       window.dispatchEvent(new Event("documentListUpdated"))
       toast({ variant: "success", title: "Deleted", description: "Document deleted successfully." })
     } catch {
@@ -171,123 +317,488 @@ export function DashboardLayout() {
     }
   }
 
-  const handleCreateFolder = async () => {
-    if (!user?.id) return
-    const name = window.prompt("Folder name:")?.trim()
-    if (!name) return
+  const handleCreateProject = async () => {
+    const name = newProjectName.trim()
+    if (!organizationId || !name || selectedLegislationIds.length === 0) return
+
+    setIsCreatingProject(true)
     try {
-      await storageService.createFolder(user.id, name)
-      refreshFolders()
-    } catch {
-      toast({ variant: "destructive", title: "Failed", description: "Could not create folder." })
+      setCreateProjectStage("Creating project workspace...")
+      setCreateProjectEvaluationStatus(null)
+      const project = await storageService.createProject(organizationId, {
+        name,
+        description: newProjectDescription.trim() || undefined,
+        legislation_template_ids: selectedLegislationIds,
+      })
+
+      if (newProjectFiles.length > 0) {
+        setCreateProjectStage(`Uploading ${newProjectFiles.length} document(s)...`)
+        await Promise.all(
+          newProjectFiles.map((file) =>
+            storageService.uploadDocument({
+              organizationId,
+              projectId: project.project_id,
+              file,
+              title: file.name.replace(/\.[^/.]+$/, ""),
+            })
+          )
+        )
+      }
+
+      if (createAndRunAnalysis) {
+        setCreateProjectStage("Starting full project analysis...")
+        await storageService.startProjectEvaluation(
+          organizationId,
+          project.project_id,
+          selectedLegislationIds
+        )
+
+        setSelectedProjectId(project.project_id)
+        setExpandedProjects((prev) => ({ ...prev, [project.project_id]: true }))
+        await refreshWorkspaceData()
+
+        const finalStatus = await storageService.waitForProjectEvaluationCompletion(
+          organizationId,
+          project.project_id,
+          {
+            intervalMs: 3500,
+            onProgress: (status) => {
+              setCreateProjectEvaluationStatus(status)
+              setCreateProjectStage(
+                getShortProjectStatus(status)
+                || `Running project analysis (${status.completed_count}/${status.total_tasks || 1})...`
+              )
+              setProjectEvaluationStatus(project.project_id, status)
+            },
+          }
+        )
+
+        if (finalStatus.status === "failed") {
+          throw new Error(finalStatus.error || "Project analysis failed")
+        }
+      }
+
+      setNewProjectName("")
+      setNewProjectDescription("")
+      setSelectedLegislationIds([])
+      setNewProjectFiles([])
+      setCreateAndRunAnalysis(true)
+      setIsCreateProjectOpen(false)
+      setSelectedProjectId(project.project_id)
+      setExpandedProjects((prev) => ({ ...prev, [project.project_id]: true }))
+      window.dispatchEvent(new Event("documentListUpdated"))
+      await refreshWorkspaceData()
+      await refreshProjectEvaluationStatuses()
+      navigate(`/dashboard/project/${project.project_id}`)
+      toast({
+        variant: "success",
+        title: "Project created",
+        description: createAndRunAnalysis
+          ? `${project.name} is ready and the full project analysis has completed.`
+          : newProjectFiles.length > 0
+            ? `${project.name} is ready and ${newProjectFiles.length} document(s) were uploaded.`
+            : `${project.name} is ready.`,
+      })
+    } catch (error) {
+      console.error(error)
+      toast({
+        variant: "destructive",
+        title: "Create failed",
+        description: createAndRunAnalysis
+          ? "Could not finish the full project setup and analysis."
+          : "Could not create project.",
+      })
+    } finally {
+      setIsCreatingProject(false)
+      setCreateProjectStage(null)
+      setCreateProjectEvaluationStatus(null)
     }
   }
 
-  const handleRenameFolder = async (folderId: string, newName: string) => {
-    if (!user?.id) return
-    try {
-      await storageService.renameFolder(user.id, folderId, newName)
-      refreshFolders()
-    } catch {
-      toast({ variant: "destructive", title: "Failed", description: "Could not rename folder." })
-    }
-  }
+  const handleDeleteProject = async (project: ProjectItem) => {
+    if (!organizationId) return
 
-  const handleDeleteFolder = async (folderId: string) => {
-    if (!user?.id) return
     const ok = await confirm({
-      title: "Delete this folder?",
-      description: "Documents in the folder will become unfiled.",
+      title: `Delete ${project.name}?`,
+      description: "Delete is blocked while the project still contains documents.",
       confirmLabel: "Delete",
       cancelLabel: "Cancel",
       destructive: true,
     })
+
     if (!ok) return
+
     try {
-      await storageService.deleteFolder(user.id, folderId)
-      refreshFolders()
-      refreshDocuments()
+      await storageService.deleteProject(organizationId, project.project_id)
+      await refreshWorkspaceData()
+      toast({ variant: "success", title: "Project deleted", description: `${project.name} was removed.` })
     } catch {
-      toast({ variant: "destructive", title: "Failed", description: "Could not delete folder." })
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: "Project could not be deleted. It may still contain documents.",
+      })
     }
   }
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string)
+  const handleProjectUploadClick = (projectId: string) => {
+    setSelectedProjectId(projectId)
+    setUploadingProjectId(projectId)
+    uploadInputRef.current?.click()
   }
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveDragId(null)
-    const { active, over } = event
-    if (!over || !user?.id) return
-    const docId = active.id as string
-    const targetId = over.id as string
-    const newFolderId = targetId === "unfiled" ? null : targetId
+  const handleUploadForProject = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const projectId = uploadingProjectId
+
+    if (!file || !projectId || !organizationId) return
+
     try {
-      await storageService.moveDocumentToFolder(user.id, docId, newFolderId)
-      refreshDocuments()
+      const upload = await storageService.uploadDocument({
+        organizationId,
+        projectId,
+        file,
+        title: file.name.replace(/\.[^/.]+$/, ""),
+      })
+
+      window.dispatchEvent(new Event("documentListUpdated"))
+      navigate(`/dashboard/document/${upload.document_id}`)
+      toast({ variant: "success", title: "Uploaded", description: "Document added to the project." })
     } catch {
-      toast({ variant: "destructive", title: "Failed", description: "Could not move document." })
+      toast({ variant: "destructive", title: "Upload failed", description: "Could not upload the document." })
+    } finally {
+      event.target.value = ""
+      setUploadingProjectId(null)
     }
   }
 
-  const filteredDocuments = searchQuery
-    ? documents.filter(d => (d.title || "").toLowerCase().includes(searchQuery.toLowerCase()))
-    : documents
+  const filteredProjects = projects
+    .map((project) => {
+      const docsForProject = documents.filter((doc) => doc.project_id === project.project_id)
+      const matchingDocs = searchQuery
+        ? docsForProject.filter((doc) => (doc.title || "").toLowerCase().includes(searchQuery.toLowerCase()))
+        : docsForProject
+      const projectMatches = (project.name || "").toLowerCase().includes(searchQuery.toLowerCase())
 
-  const unfiledDocuments = filteredDocuments.filter(d => !d.folder_id)
-  const activeDragDoc = activeDragId ? documents.find(d => d.document_id === activeDragId) : null
+      if (searchQuery && !projectMatches && matchingDocs.length === 0) {
+        return null
+      }
 
-  const documentCount = documents.length
+      return {
+        project,
+        documents: projectMatches && searchQuery ? docsForProject : matchingDocs,
+      }
+    })
+    .filter((item): item is { project: ProjectItem; documents: StoredDocument[] } => Boolean(item))
+
+  const totalDocumentCount = documents.length
+
+  const toggleLegislationTemplate = (templateId: string) => {
+    setSelectedLegislationIds((prev) =>
+      prev.includes(templateId)
+        ? prev.filter((id) => id !== templateId)
+        : [...prev, templateId]
+    )
+  }
+
+  const handleNewProjectFilesSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []).filter((file) => file.type === "application/pdf")
+    setNewProjectFiles(files)
+  }
+
+  const createProjectLoaderSteps: Array<{
+    label: string
+    status: "pending" | "active" | "done"
+  }> = [
+    {
+      label: "Create project workspace",
+      status: createProjectStage === "Creating project workspace..."
+        ? "active"
+        : createProjectStage
+          ? "done"
+          : "pending",
+    },
+    {
+      label: newProjectFiles.length > 0 ? `Upload ${newProjectFiles.length} document(s)` : "No documents to upload",
+      status: newProjectFiles.length === 0
+        ? "done"
+        : createProjectStage?.startsWith("Uploading")
+          ? "active"
+          : createProjectStage && createProjectStage !== "Creating project workspace..."
+            ? "done"
+            : "pending",
+    },
+    {
+      label: createAndRunAnalysis ? "Start full project analysis" : "Skip automatic analysis",
+      status: !createAndRunAnalysis
+        ? "done"
+        : createProjectStage === "Starting full project analysis..."
+          ? "active"
+          : createProjectEvaluationStatus || (createProjectStage && createProjectStage !== "Creating project workspace..." && !createProjectStage.startsWith("Uploading"))
+            ? "done"
+            : createProjectStage === null
+            ? "pending"
+            : "pending",
+    },
+    {
+      label: createAndRunAnalysis ? "Wait for project evaluation to finish" : "Project ready",
+      status: !createAndRunAnalysis
+        ? "done"
+        : createProjectEvaluationStatus?.status === "running"
+          ? "active"
+          : createProjectEvaluationStatus?.status === "completed"
+            ? "done"
+            : "pending",
+    },
+  ]
 
   return (
-    <div className="flex h-screen w-full relative">
+    <div className="relative flex h-screen w-full">
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
 
+      {isCreateProjectOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            {isCreatingProject ? (
+              <ProjectProcessLoader
+                title="Setting up project"
+                description={createAndRunAnalysis
+                  ? "Creating the project, uploading documents, and waiting for the full project analysis to finish."
+                  : "Creating the project and uploading the selected documents."}
+                completedCount={createProjectEvaluationStatus?.completed_count}
+                totalTasks={createProjectEvaluationStatus?.total_tasks}
+                progressPercent={createProjectEvaluationStatus?.progress_percent}
+                statusMessage={createProjectEvaluationStatus?.status_message}
+                etaLabel={formatProjectEta(
+                  createProjectEvaluationStatus?.estimated_seconds_remaining,
+                  createProjectEvaluationStatus?.estimated_completion_at
+                )}
+                currentTask={createProjectStage}
+                steps={createProjectLoaderSteps}
+              />
+            ) : (
+              <>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">New Project</p>
+                <h2 className="mt-1 text-xl font-semibold text-foreground">Create a project</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Choose the legislation templates this project should be checked against.</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => {
+                  if (!isCreatingProject) {
+                    setIsCreateProjectOpen(false)
+                    setCreateAndRunAnalysis(true)
+                    setNewProjectFiles([])
+                  }
+                }}
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Project name</label>
+                <Input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="e.g. Nexus MiCA Review"
+                  className="bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Description</label>
+                <textarea
+                  value={newProjectDescription}
+                  onChange={(e) => setNewProjectDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  placeholder="e.g. Programme of operations review"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">Legislation templates</label>
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  {legislationTemplates.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No legislation templates available.</p>
+                  ) : (
+                    legislationTemplates.map((template) => {
+                      const checked = selectedLegislationIds.includes(template.id)
+                      return (
+                        <label
+                          key={template.id}
+                          className={cn(
+                            "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors",
+                            checked ? "border-slate-400 bg-white" : "border-slate-200 bg-white/80 hover:border-slate-300"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleLegislationTemplate(template.id)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{template.name}</p>
+                            <p className="mt-1 break-all text-xs text-muted-foreground">{template.id}</p>
+                          </div>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <div className="pr-4">
+                  <p className="text-sm font-medium text-foreground">Run full project analysis after creation</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Start the complete project-wide AI check immediately after the project and documents are created.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreateAndRunAnalysis((prev) => !prev)}
+                  className={cn(
+                    "relative h-7 w-12 rounded-full transition-colors",
+                    createAndRunAnalysis ? "bg-black" : "bg-slate-300"
+                  )}
+                  aria-pressed={createAndRunAnalysis}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-1 h-5 w-5 rounded-full bg-white transition-transform",
+                      createAndRunAnalysis ? "left-6" : "left-1"
+                    )}
+                  />
+                </button>
+              </label>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium">Documents</label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => createProjectUploadInputRef.current?.click()}
+                    disabled={isCreatingProject}
+                  >
+                    <FilePlus2 className="h-4 w-4" />
+                    Add PDFs
+                  </Button>
+                </div>
+                <input
+                  ref={createProjectUploadInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={handleNewProjectFilesSelected}
+                />
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  {newProjectFiles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents selected yet. You can upload multiple PDFs at once.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {newProjectFiles.map((file) => (
+                        <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">{Math.round(file.size / 1024)} KB</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() =>
+                              setNewProjectFiles((prev) =>
+                                prev.filter((candidate) => candidate !== file)
+                              )
+                            }
+                            disabled={isCreatingProject}
+                            title="Remove file"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreateProjectOpen(false)
+                  setCreateAndRunAnalysis(true)
+                  setNewProjectFiles([])
+                }}
+                disabled={isCreatingProject}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleCreateProject()}
+                disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || isCreatingProject}
+              >
+                Create Project
+              </Button>
+            </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <aside
         className={cn(
-          "border-r border-slate-300 transition-all duration-300 ease-in-out overflow-hidden",
-          "fixed inset-y-0 left-0 z-50 w-[280px]",
+          "fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-slate-300 transition-all duration-300 ease-in-out",
+          "w-[320px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full",
           "md:relative md:translate-x-0",
-          isCollapsed ? "md:w-[72px]" : "md:w-[280px]"
+          isCollapsed ? "md:w-[76px]" : "md:w-[320px]"
         )}
         style={{ backgroundColor: "hsl(var(--sidebar-bg))" }}
       >
-        <div className={cn(
-          "flex flex-col h-full transition-all duration-300 ease-in-out",
-          isCollapsed ? "w-[72px]" : "w-[280px]"
-        )}>
-          {/* Logo */}
+        <div className={cn("flex h-full flex-col transition-all duration-300 ease-in-out", isCollapsed ? "w-[76px]" : "w-[320px]")}>
           <div className="p-6 pb-4">
-            {!isCollapsed && (
+            {!isCollapsed ? (
               <div className="flex items-center justify-between">
                 <button
-                  className="flex-1 hover:opacity-70 transition-opacity h-8 flex items-center"
+                  className="flex h-8 flex-1 items-center transition-opacity hover:opacity-70"
                   onClick={() => navigate("/")}
                   title="Go to home"
                 >
                   <div className="w-full max-w-[160px]">
-                    <img src={logoSvg} alt="Logo" className="w-full h-auto object-contain" />
+                    <img src={logoSvg} alt="Logo" className="h-auto w-full object-contain" />
                   </div>
                 </button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 flex-shrink-0 ml-2"
-                  onClick={() => window.innerWidth < 768 ? setIsMobileOpen(false) : setIsCollapsed(true)}
+                  className="ml-2 h-8 w-8 flex-shrink-0"
+                  onClick={() => (window.innerWidth < 768 ? setIsMobileOpen(false) : setIsCollapsed(true))}
                   title="Close sidebar"
                 >
                   <PanelLeftClose className="h-4 w-4" />
                 </Button>
               </div>
-            )}
-            {isCollapsed && (
+            ) : (
               <div className="flex justify-center">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsCollapsed(false)} title="Open sidebar">
                   <PanelRightClose className="h-4 w-4" />
@@ -296,128 +807,216 @@ export function DashboardLayout() {
             )}
           </div>
 
-          <div className="h-px bg-border mx-3" />
+          <div className="mx-3 h-px bg-border" />
 
-          <nav className="flex-1 flex flex-col overflow-hidden px-3 py-3 space-y-1">
-            {isSignedIn && (
-              <Link to="/dashboard" title="Upload Document" onClick={handleNavClick}>
-                <div className={cn(
-                  "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
-                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
-                  isActivePath("/dashboard") ? "bg-[hsl(var(--sidebar-active))]" : "hover:bg-[hsl(var(--sidebar-hover))]"
-                )}>
-                  <Upload className="h-4 w-4 flex-shrink-0" />
-                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Document Management</span>}
-                </div>
-              </Link>
-            )}
-
-            {isSignedIn && (
-              <div className="pt-2">
-                {/* Documents header row */}
-                <div className={cn(
-                  "w-full py-2.5 text-sm font-medium flex items-center rounded-sm transition-colors",
-                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3"
-                )}>
-                  <FileText className="h-4 w-4 flex-shrink-0" />
-                  {!isCollapsed && (
-                    <>
-                      <span className="flex-1 text-left text-gray-500">Documents</span>
-                      <Badge variant="secondary" className="h-5 px-1.5 text-xs flex-shrink-0 text-gray-500">
-                        {documentCount}
-                      </Badge>
-                      <button
-                        onClick={handleCreateFolder}
-                        className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--sidebar-hover))] transition-colors flex-shrink-0"
-                        title="New folder"
-                      >
-                        <FolderPlus className="h-3.5 w-3.5" />
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                {!isCollapsed && (
-                  <div className="mt-1 space-y-1">
-                    {/* Search */}
-                    <div className="relative mb-2 pl-3 pr-3">
-                      <Search className="absolute left-6 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
-                        placeholder="Search documents..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-8 h-9 bg-[hsl(var(--sidebar-hover))] border-0 focus:border focus:border-slate-300/50 dark:focus:border-slate-600/50 focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm placeholder:text-xs w-full"
-                      />
+          <nav className="flex flex-1 flex-col overflow-hidden px-3 py-3">
+            {isSignedIn && !isCollapsed && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200/80 bg-white/65 p-3 shadow-sm backdrop-blur-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Workspace</p>
+                      <h2 className="text-sm font-semibold text-foreground">Projects</h2>
                     </div>
-
-                    {/* Folders + unfiled documents with drag-drop */}
-                    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                      <div className="max-h-[400px] overflow-y-auto space-y-1">
-                        {folders.map((folder) => (
-                          <SidebarFolder
-                            key={folder.id}
-                            folderId={folder.id}
-                            folderName={folder.name}
-                            documents={filteredDocuments.filter(d => d.folder_id === folder.id)}
-                            onRename={handleRenameFolder}
-                            onDelete={handleDeleteFolder}
-                            onDeleteDocument={handleDeleteDocument}
-                            isActive={isActivePath}
-                            onNavClick={handleNavClick}
-                          />
-                        ))}
-
-                        {/* Unfiled documents */}
-                        <div className="pl-3 space-y-0.5">
-                          <UnfiledDropZone
-                            documents={unfiledDocuments}
-                            isActive={isActivePath}
-                            onDeleteDocument={handleDeleteDocument}
-                            onNavClick={handleNavClick}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Drag overlay — shows the dragged doc name */}
-                      <DragOverlay>
-                        {activeDragDoc && (
-                          <div className="px-3 py-2 rounded-sm bg-[hsl(var(--sidebar-bg))] border border-slate-300 shadow-lg text-sm font-medium opacity-90">
-                            {activeDragDoc.title || "Untitled"}
-                          </div>
-                        )}
-                      </DragOverlay>
-                    </DndContext>
+                    <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-xs">
+                      {totalDocumentCount} docs
+                    </Badge>
                   </div>
-                )}
+
+                  <div className="flex gap-2">
+                    <div className="flex-1 rounded-lg bg-white/70 px-3 py-2 text-sm text-muted-foreground">
+                      Create a project, choose legislation, then upload documents into it.
+                    </div>
+                    <Button
+                      className="h-9 rounded-lg px-3"
+                      onClick={() => setIsCreateProjectOpen(true)}
+                      title="Create project"
+                    >
+                      <FolderPlus className="h-4 w-4" />
+                      New
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search projects or documents..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-9 rounded-xl border-0 bg-[hsl(var(--sidebar-hover))] pl-9 shadow-none"
+                  />
+                </div>
               </div>
             )}
 
-            {!isSignedIn && isLoaded && (
-              <Link to="/dashboard/example-1" title="Example Document" onClick={handleNavClick}>
-                <div className={cn(
-                  "py-2.5 text-sm font-medium transition-colors cursor-pointer flex items-center rounded-sm",
-                  isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3",
-                  isActivePath("/dashboard/example-1") ? "bg-[hsl(var(--sidebar-active))]" : "hover:bg-[hsl(var(--sidebar-hover))]"
-                )}>
-                  <FileText className="h-4 w-4 flex-shrink-0" />
-                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Example Document</span>}
-                </div>
-              </Link>
+            {isSignedIn && isCollapsed && (
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <Badge variant="secondary" className="rounded-full px-2 py-1 text-[10px]">
+                  {projects.length}
+                </Badge>
+              </div>
             )}
+
+            {isSignedIn && !isCollapsed && (
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                <div className="space-y-2">
+                  {isWorkspaceLoading && (
+                    <div className="rounded-xl border border-slate-200 bg-white/60 px-4 py-6 text-center text-sm text-muted-foreground">
+                      Loading workspace...
+                    </div>
+                  )}
+
+                  {!isWorkspaceLoading && filteredProjects.map(({ project, documents: projectDocuments }) => {
+                    const isExpanded = expandedProjects[project.project_id] ?? true
+                    const isSelected = selectedProjectId === project.project_id
+                    const evaluationStatus = projectEvaluationStatuses[project.project_id]
+                    const isRunning = evaluationStatus?.status === "running"
+                    const shortStatus = getShortProjectStatus(evaluationStatus)
+                    const etaLabel = formatProjectEta(
+                      evaluationStatus?.estimated_seconds_remaining,
+                      evaluationStatus?.estimated_completion_at
+                    )
+
+                    return (
+                      <div
+                        key={project.project_id}
+                        className={cn(
+                          "overflow-hidden rounded-xl border transition-colors",
+                          isSelected
+                            ? "border-slate-300 bg-white/75 shadow-sm"
+                            : "border-transparent bg-transparent hover:border-slate-200/70 hover:bg-white/50"
+                        )}
+                      >
+                        <div className="flex items-start gap-2 px-3 py-3">
+                          <button
+                            className="mt-0.5 text-muted-foreground"
+                            disabled={isRunning}
+                            onClick={() =>
+                              setExpandedProjects((prev) => ({
+                                ...prev,
+                                [project.project_id]: !isExpanded,
+                              }))
+                            }
+                            title={isExpanded ? "Collapse project" : "Expand project"}
+                          >
+                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
+
+                          <button
+                            className="min-w-0 flex-1 text-left"
+                            disabled={isRunning}
+                            onClick={() => {
+                              setSelectedProjectId(project.project_id)
+                              setExpandedProjects((prev) => ({ ...prev, [project.project_id]: true }))
+                              navigate(`/dashboard/project/${project.project_id}`)
+                              handleNavClick()
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-sm font-semibold">{project.name || "Untitled project"}</p>
+                              <Badge variant="secondary" className="rounded-full px-2 text-[11px]">
+                                {documents.filter((doc) => doc.project_id === project.project_id).length}
+                              </Badge>
+                            </div>
+                            {project.description ? (
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{project.description}</p>
+                            ) : (
+                              <p className="mt-1 text-xs text-muted-foreground">Project folder for related submission documents.</p>
+                            )}
+                            {isRunning && (
+                              <div className="mt-2 space-y-1">
+                                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                                  <span className="truncate">{shortStatus}</span>
+                                  <span>{evaluationStatus.completed_count} / {evaluationStatus.total_tasks || 1}</span>
+                                </div>
+                                <div className="h-1.5 w-full rounded-full bg-slate-200">
+                                  <div
+                                    className="h-1.5 rounded-full bg-primary transition-all duration-500"
+                                    style={{ width: `${Math.max(6, evaluationStatus.progress_percent ?? ((evaluationStatus.completed_count / (evaluationStatus.total_tasks || 1)) * 100))}%` }}
+                                  />
+                                </div>
+                                {(etaLabel || evaluationStatus.current_task?.length) && (
+                                  <p className="truncate text-[10px] text-muted-foreground">
+                                    {etaLabel || evaluationStatus.current_task?.join(" / ")}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </button>
+
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="rounded-lg"
+                              onClick={() => handleProjectUploadClick(project.project_id)}
+                              title="Upload document to project"
+                              disabled={isRunning}
+                            >
+                              <FilePlus2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="rounded-lg"
+                              onClick={() => void handleDeleteProject(project)}
+                              title="Delete project"
+                              disabled={isRunning}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="border-t border-slate-200/80 bg-white/40 px-3 py-2">
+                            {projectDocuments.length > 0 ? (
+                              <div className="space-y-1">
+                                {projectDocuments.map((doc) => (
+                                  <SidebarDocumentRow
+                                    key={doc.document_id}
+                                    doc={doc}
+                                    isActive={isActivePath}
+                                    onDeleteDocument={handleDeleteDocument}
+                                    onNavClick={handleNavClick}
+                                    disabled={isRunning}
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-muted-foreground">
+                                No documents in this project yet.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {!isWorkspaceLoading && filteredProjects.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                      {projects.length === 0 ? "Create your first project to start grouping documents." : "No matching projects or documents."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
           </nav>
 
-          {/* User section */}
           <div className="border-t border-slate-300 p-3">
             {isSignedIn ? (
-              <div className={cn("py-2.5 flex items-center", isCollapsed ? "justify-center" : "pl-3 pr-3 gap-3")}>
+              <div className={cn("flex items-center py-2.5", isCollapsed ? "justify-center" : "gap-3 pl-3 pr-3")}>
                 <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: "h-7 w-7" } }} />
                 {!isCollapsed && user && (
-                  <div className="flex flex-col overflow-hidden min-w-0">
-                    <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+                  <div className="min-w-0 flex flex-col overflow-hidden">
+                    <span className="whitespace-nowrap text-sm font-medium overflow-hidden text-ellipsis">
                       {user.fullName || user.firstName || "User"}
                     </span>
                     {user.primaryEmailAddress && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                      <span className="whitespace-nowrap text-xs text-muted-foreground overflow-hidden text-ellipsis">
                         {user.primaryEmailAddress.emailAddress}
                       </span>
                     )}
@@ -425,20 +1024,27 @@ export function DashboardLayout() {
                 )}
               </div>
             ) : (
-              <div className={cn("py-2.5 flex items-center", isCollapsed ? "pl-4" : "pl-3 pr-3 gap-3")}>
+              <div className={cn("flex items-center py-2.5", isCollapsed ? "pl-4" : "gap-3 pl-3 pr-3")}>
                 <SignInButton mode="modal">
-                  <button className="flex items-center gap-3 w-full hover:opacity-80 transition-opacity">
+                  <button className="flex w-full items-center gap-3 transition-opacity hover:opacity-80">
                     <LogIn className="h-4 w-4 flex-shrink-0" />
-                    {!isCollapsed && <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Sign in</span>}
+                    {!isCollapsed && <span className="whitespace-nowrap text-sm font-medium overflow-hidden text-ellipsis">Sign in</span>}
                   </button>
                 </SignInButton>
               </div>
             )}
           </div>
         </div>
+
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => void handleUploadForProject(e)}
+        />
       </aside>
 
-      {/* Main Content */}
       <main
         className="flex-1 overflow-auto bg-background"
         style={{
@@ -446,24 +1052,34 @@ export function DashboardLayout() {
           backgroundSize: "15px 15px",
         }}
       >
-        {/* Mobile Header */}
         <div
-          className="md:hidden sticky top-0 z-30 border-b border-slate-300"
+          className="sticky top-0 z-30 border-b border-slate-300 md:hidden"
           style={{ backgroundColor: "hsl(var(--sidebar-bg))" }}
         >
-          <div className="p-6 pb-4 flex items-center justify-between">
-            <button className="flex-1 hover:opacity-70 transition-opacity h-8 flex items-center" onClick={() => navigate("/")}>
+          <div className="flex items-center justify-between p-6 pb-4">
+            <button className="flex h-8 flex-1 items-center transition-opacity hover:opacity-70" onClick={() => navigate("/")}>
               <div className="w-full max-w-[140px]">
-                <img src={logoSvg} alt="Logo" className="w-full h-auto object-contain" />
+                <img src={logoSvg} alt="Logo" className="h-auto w-full object-contain" />
               </div>
             </button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 ml-2" onClick={() => setIsMobileOpen(true)}>
+            <Button variant="ghost" size="icon" className="ml-2 h-8 w-8 flex-shrink-0" onClick={() => setIsMobileOpen(true)}>
               <Menu className="h-5 w-5" />
             </Button>
           </div>
         </div>
 
-        <Outlet />
+        <Outlet
+          context={{
+            organizationId,
+            projects,
+            selectedProjectId,
+            setSelectedProjectId,
+            refreshWorkspaceData,
+            projectEvaluationStatuses,
+            refreshProjectEvaluationStatuses,
+            setProjectEvaluationStatus,
+          } satisfies DashboardOutletContext}
+        />
       </main>
     </div>
   )
