@@ -6,7 +6,7 @@ import { RealResults } from "./RealResults"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService } from "@/lib/documentStorageService"
-import { ChessLoaderLong } from "@/components/ChessLoaderLong"
+import { ChessLoader } from "@/components/ChessLoader"
 import { type NormalizedIssue, type ParseResult } from "@/lib/documentService"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
@@ -123,7 +123,7 @@ export function DocumentView() {
   }, [id, user, organizationId, storageService])
 
   if (isLoading) {
-    return <div className="h-screen flex items-center justify-center"><ChessLoaderLong /></div>
+    return <div className="h-screen flex items-center justify-center"><ChessLoader duration={10} /></div>
   }
 
   if (error) {

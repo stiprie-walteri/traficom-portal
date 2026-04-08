@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
-import { ChessLoaderLong } from "@/components/ChessLoaderLong"
+import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
 import { useApiClient } from "@/hooks/useApiClient"
@@ -514,7 +514,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       {/* Page content shown only after loading */}
       {isLoading ? (
         <div className="bg-white w-full h-full flex items-center justify-center">
-          <ChessLoaderLong />
+          <ChessLoader duration={10} />
         </div>
       ) : (
         <>

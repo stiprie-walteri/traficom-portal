@@ -93,9 +93,6 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
   )
 }
 
-export function ChessLoaderLong() {
-  return <ChessLoader duration={10} />
-}
 
 export function UploadChessLoader({ duration = 8, statusText = "" }: { duration?: number; statusText?: string }) {
   return (
