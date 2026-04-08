@@ -15,7 +15,7 @@ import {
 import { ChessLoader } from "@/components/ChessLoader"
 import { UploadChessLoader } from "@/components/ChessLoader"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
-import { FileWarning, Pencil, Sparkles, X } from "lucide-react"
+import { FileWarning, Pencil, Sparkles, X, CheckCircle2 } from "lucide-react"
 
 
 function getShortProjectStatus(statusMessage?: string | null, currentTask?: string[] | null) {
@@ -29,8 +29,23 @@ type FindingRow = {
   taskLabel: string
   explanation: string
   missingSections: string[]
-  incorrectSectionsCount: number
-  correctnessScore?: number
+  incorrectSections: string[]
+  isCorrect: boolean
+}
+
+function uniqueItems(items: Array<string | undefined | null>) {
+  return Array.from(new Set(items.map((item) => item?.trim()).filter((item): item is string => Boolean(item))))
+}
+
+function isTaskCorrect(result: ProjectEvaluationResult) {
+  if (typeof result.is_correct === "boolean") {
+    return result.is_correct
+  }
+
+  const missingSections = uniqueItems(result.missing_sections || [])
+  const incorrectSections = uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote))
+
+  return result.exists !== false && missingSections.length === 0 && incorrectSections.length === 0
 }
 
 function summarizeProjectCheck(documents: StoredDocument[], complianceResult: ProjectComplianceResult | null) {
@@ -38,38 +53,44 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
 
   let findings = 0
   let missingSections = 0
-  let correctnessTotal = 0
-  let scoredItems = 0
+  let correctSections = 0
+  const allSections = results.length
 
   for (const item of results) {
-    if (item.exists === false) findings += 1
-    missingSections += item.missing_sections?.length || 0
-    if (typeof item.correctness_score === "number") {
-      correctnessTotal += item.correctness_score
-      scoredItems += 1
+    const missingForTask = uniqueItems(item.missing_sections || [])
+    const taskIsCorrect = isTaskCorrect(item)
+
+    if (!taskIsCorrect) {
+      findings += 1
+    } else {
+      correctSections += 1
     }
+
+    missingSections += missingForTask.length
   }
 
   return {
     totalDocuments: documents.length,
     completedDocuments: complianceResult ? documents.length : 0,
     findings,
+    correctSections,
     missingSections,
-    averageCorrectness: scoredItems > 0 ? Math.round(correctnessTotal / scoredItems) : 0,
+    allSections,
+    averageCorrectScore: allSections > 0 ? Math.round((correctSections / allSections) * 100) : 0,
   }
 }
 
 function buildFindingRows(results: ProjectEvaluationResult[]): FindingRow[] {
   return results
-    .filter((result) => result.exists === false)
     .map((result) => ({
-      legislationName: result.legislation_name,
+      legislationName: result.legislation_name || "Finding",
       taskLabel: Array.isArray(result.task) ? result.task.join(" / ") : "Finding",
       explanation: result.explanation,
-      missingSections: result.missing_sections || [],
-      incorrectSectionsCount: result.incorrect_sections?.length || 0,
-      correctnessScore: result.correctness_score,
+      missingSections: uniqueItems(result.missing_sections || []),
+      incorrectSections: uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote)),
+      isCorrect: isTaskCorrect(result),
     }))
+    .sort((left, right) => Number(left.isCorrect) - Number(right.isCorrect))
 }
 
 export function ProjectView() {
@@ -306,7 +327,7 @@ export function ProjectView() {
   return (
     <div className="relative container mx-auto max-w-6xl px-6 py-10">
       {isEditOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
@@ -438,11 +459,17 @@ export function ProjectView() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Average score</p>
-                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.averageCorrectness}%</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.averageCorrectScore}%</p>
+                <p className="mt-1 text-xs text-muted-foreground">Correct tasks / all tasks</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Documents checked</p>
                 <p className="mt-2 text-3xl font-semibold text-foreground">{summary.completedDocuments}/{summary.totalDocuments}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Correct sections</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.correctSections}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Tasks with no missing or incorrect sections</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Open findings</p>
@@ -451,6 +478,11 @@ export function ProjectView() {
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Missing sections</p>
                 <p className="mt-2 text-3xl font-semibold text-foreground">{summary.missingSections}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">All sections</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.allSections}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Each task counts as one section</p>
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -464,8 +496,8 @@ export function ProjectView() {
         <section className="mt-16 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Findings</p>
-              <h2 className="mt-2 text-2xl font-semibold">All project findings</h2>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Checks</p>
+              <h2 className="mt-2 text-2xl font-semibold">All project checks</h2>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
               {findingRows.length} total
@@ -476,34 +508,64 @@ export function ProjectView() {
             {findingRows.map((finding, index) => (
               <div
                 key={`${finding.legislationName}-${index}`}
-                className="rounded-2xl border border-slate-200 bg-white p-4"
+                className={`rounded-2xl border p-4 ${
+                  finding.isCorrect ? "border-green-200 bg-green-50/30" : "border-slate-200 bg-white"
+                }`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <FileWarning className="h-4 w-4 text-amber-600" />
-                      <p className="truncate text-sm font-semibold">{finding.taskLabel}</p>
+                      {finding.isCorrect ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <FileWarning className="h-4 w-4 text-amber-600" />
+                      )}
+                      <p className={`truncate text-sm font-semibold ${finding.isCorrect ? "text-green-800" : ""}`}>
+                        {finding.taskLabel}
+                      </p>
+                      {finding.isCorrect && (
+                        <span className="ml-2 whitespace-nowrap rounded-full border border-green-300 bg-green-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-700">
+                          Correct section
+                        </span>
+                      )}
                     </div>
-                    <p className="mt-2 text-sm text-slate-700">{finding.explanation}</p>
+                    <p className={`mt-2 text-sm ${finding.isCorrect ? "text-green-700/80" : "text-slate-700"}`}>
+                      {finding.explanation || (finding.isCorrect ? "Task passed all checks." : "")}
+                    </p>
+                    {finding.isCorrect && (
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-green-700">
+                        This task is correct.
+                      </p>
+                    )}
                     {finding.missingSections.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {finding.missingSections.map((section) => (
-                          <span key={section} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
-                            {section}
-                          </span>
-                        ))}
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-700">Missing sections</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {finding.missingSections.map((section) => (
+                            <span key={section} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
+                              {section}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {finding.incorrectSections.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Incorrect sections</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {finding.incorrectSections.map((section) => (
+                            <span key={section} className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
+                              {section}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
                   <div className="text-right">
                     <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Legislation</p>
                     <p className="mt-1 max-w-[220px] truncate text-sm font-semibold">{finding.legislationName}</p>
-                    {typeof finding.correctnessScore === "number" && (
-                      <p className="mt-2 text-xs text-muted-foreground">Score: {finding.correctnessScore}</p>
-                    )}
-                    {finding.incorrectSectionsCount > 0 && (
-                      <p className="mt-1 text-xs text-muted-foreground">Incorrect sections: {finding.incorrectSectionsCount}</p>
-                    )}
+                    <p className="mt-2 text-xs text-muted-foreground">Status: {finding.isCorrect ? "Correct" : "Needs review"}</p>
                   </div>
                 </div>
               </div>

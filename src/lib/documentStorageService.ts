@@ -25,6 +25,7 @@ export interface ProjectEvaluationResult {
     task: string[];
     exists: boolean;
     explanation: string;
+    is_correct?: boolean;
     correctness_score?: number;
     missing_sections?: string[];
     incorrect_sections?: IncorrectSection[];
@@ -181,6 +182,7 @@ export interface EvaluateTaskResult {
     task: string[];
     exists: boolean;
     explanation: string;
+    is_correct?: boolean;
     correctness_score?: number;
     missing_sections?: string[];
     incorrect_sections?: IncorrectSection[];
