@@ -7,9 +7,10 @@ import { defineConfig, loadEnv } from "vite"
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_BASE_URL || 'http://localhost:3000'
+  const base = env.VITE_BASE_PATH || (mode === 'production' ? '/platform/' : '/')
 
   return {
-    base: mode === 'production' ? './' : '/',
+    base,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
