@@ -15,7 +15,7 @@ import {
 import { ChessLoader } from "@/components/ChessLoader"
 import { UploadChessLoader } from "@/components/ChessLoader"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
-import { FileWarning, Pencil, Sparkles, X, CheckCircle2 } from "lucide-react"
+import { FileWarning, Pencil, Sparkles, X, CheckCircle2, Ban } from "lucide-react"
 
 
 function getShortProjectStatus(statusMessage?: string | null, currentTask?: string[] | null) {
@@ -31,6 +31,7 @@ type FindingRow = {
   missingSections: string[]
   incorrectSections: string[]
   isCorrect: boolean
+  isCancelled: boolean
 }
 
 function uniqueItems(items: Array<string | undefined | null>) {
@@ -50,13 +51,15 @@ function isTaskCorrect(result: ProjectEvaluationResult) {
 
 function summarizeProjectCheck(documents: StoredDocument[], complianceResult: ProjectComplianceResult | null) {
   const results = complianceResult?.legislations?.flatMap((group) => group.results) || complianceResult?.results || []
+  const completedResults = results.filter((item) => item.status !== "cancelled")
 
   let findings = 0
   let missingSections = 0
   let correctSections = 0
-  const allSections = results.length
+  const allSections = completedResults.length
+  const cancelledCount = results.length - completedResults.length
 
-  for (const item of results) {
+  for (const item of completedResults) {
     const missingForTask = uniqueItems(item.missing_sections || [])
     const taskIsCorrect = isTaskCorrect(item)
 
@@ -76,6 +79,8 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
     correctSections,
     missingSections,
     allSections,
+    cancelledCount,
+    isPartial: cancelledCount > 0,
     averageCorrectScore: allSections > 0 ? Math.round((correctSections / allSections) * 100) : 0,
   }
 }
@@ -89,8 +94,12 @@ function buildFindingRows(results: ProjectEvaluationResult[]): FindingRow[] {
       missingSections: uniqueItems(result.missing_sections || []),
       incorrectSections: uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote)),
       isCorrect: isTaskCorrect(result),
+      isCancelled: result.status === "cancelled",
     }))
-    .sort((left, right) => Number(left.isCorrect) - Number(right.isCorrect))
+    .sort((left, right) => {
+      if (left.isCancelled !== right.isCancelled) return Number(left.isCancelled) - Number(right.isCancelled)
+      return Number(left.isCorrect) - Number(right.isCorrect)
+    })
 }
 
 export function ProjectView() {
@@ -118,7 +127,7 @@ export function ProjectView() {
   const [isSaving, setIsSaving] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [blockingEvaluationStatus, setBlockingEvaluationStatus] = useState<{
-    status: "running"
+    status: "running" | "cancelling"
     completed_count: number
     total_tasks: number
     current_task: string[] | null
@@ -127,11 +136,12 @@ export function ProjectView() {
     estimated_seconds_remaining?: number | null
     estimated_completion_at?: string | null
   } | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   const listProject = projects.find((item) => item.project_id === id)
   const detailedProjectStatus = id ? projectEvaluationStatuses[id] : undefined
   const progressStatus = blockingEvaluationStatus || detailedProjectStatus
-  const isProjectRunning = progressStatus?.status === "running"
+  const isProjectRunning = progressStatus?.status === "running" || progressStatus?.status === "cancelling"
 
   const loadProjectData = useCallback(async () => {
     if (!organizationId || !id) return
@@ -294,21 +304,46 @@ export function ProjectView() {
       )
 
       setBlockingEvaluationStatus(null)
+      setIsCancelling(false)
       setProjectEvaluationStatus(id, finalStatus)
 
       if (finalStatus.status === "failed") {
         throw new Error(finalStatus.error || "Project analysis failed")
       }
 
+      const hasCancelledTasks = finalStatus.results?.some((r) => r.status === "cancelled")
       await refreshWorkspaceData()
       await refreshProjectEvaluationStatuses()
       await loadProjectData()
-      toast({ variant: "success", title: "Analysis complete", description: "Project analysis finished successfully." })
+      toast({
+        variant: "success",
+        title: hasCancelledTasks ? "Analysis stopped" : "Analysis complete",
+        description: hasCancelledTasks
+          ? "Evaluation was cancelled. Partial results have been saved."
+          : "Project analysis finished successfully.",
+      })
     } catch (error) {
       console.error(error)
       setBlockingEvaluationStatus(null)
+      setIsCancelling(false)
       await refreshProjectEvaluationStatuses()
       toast({ variant: "destructive", title: "Rerun failed", description: "Could not complete analysis for the whole project." })
+    }
+  }
+
+  const handleCancelProject = async () => {
+    if (!organizationId || !id) return
+
+    setIsCancelling(true)
+    try {
+      await storageService.cancelProjectEvaluation(organizationId, id)
+      setBlockingEvaluationStatus((prev) =>
+        prev ? { ...prev, status: "cancelling", status_message: "Cancelling evaluation..." } : prev
+      )
+    } catch (error) {
+      console.error(error)
+      toast({ variant: "destructive", title: "Cancel failed", description: "Could not cancel the evaluation." })
+      setIsCancelling(false)
     }
   }
 
@@ -453,14 +488,23 @@ export function ProjectView() {
 
           <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Check</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Check</p>
+                {summary.isPartial && (
+                  <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                    Partial
+                  </span>
+                )}
+              </div>
               <h2 className="mt-2 text-2xl font-semibold">Project Summary</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Average score</p>
                 <p className="mt-2 text-3xl font-semibold text-foreground">{summary.averageCorrectScore}%</p>
-                <p className="mt-1 text-xs text-muted-foreground">Correct tasks / all tasks</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {summary.isPartial ? "Correct tasks / completed tasks" : "Correct tasks / all tasks"}
+                </p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Documents checked</p>
@@ -496,11 +540,25 @@ export function ProjectView() {
         <section className="mt-16 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Checks</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Checks</p>
+                {summary.isPartial && (
+                  <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                    Partial
+                  </span>
+                )}
+              </div>
               <h2 className="mt-2 text-2xl font-semibold">All project checks</h2>
             </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
-              {findingRows.length} total
+            <div className="flex items-center gap-2">
+              {summary.cancelledCount > 0 && (
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-500">
+                  {summary.cancelledCount} cancelled
+                </div>
+              )}
+              <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
+                {findingRows.length} total
+              </div>
             </div>
           </div>
 
@@ -509,30 +567,43 @@ export function ProjectView() {
               <div
                 key={`${finding.legislationName}-${index}`}
                 className={`rounded-2xl border p-4 ${
-                  finding.isCorrect ? "border-green-200 bg-green-50/30" : "border-slate-200 bg-white"
+                  finding.isCancelled
+                    ? "border-slate-200 bg-slate-50 opacity-60"
+                    : finding.isCorrect
+                      ? "border-green-200 bg-green-50/30"
+                      : "border-slate-200 bg-white"
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      {finding.isCorrect ? (
+                      {finding.isCancelled ? (
+                        <Ban className="h-4 w-4 text-slate-400" />
+                      ) : finding.isCorrect ? (
                         <CheckCircle2 className="h-4 w-4 text-green-600" />
                       ) : (
                         <FileWarning className="h-4 w-4 text-amber-600" />
                       )}
-                      <p className={`truncate text-sm font-semibold ${finding.isCorrect ? "text-green-800" : ""}`}>
+                      <p className={`truncate text-sm font-semibold ${finding.isCancelled ? "text-slate-400" : finding.isCorrect ? "text-green-800" : ""}`}>
                         {finding.taskLabel}
                       </p>
-                      {finding.isCorrect && (
+                      {finding.isCancelled && (
+                        <span className="ml-2 whitespace-nowrap rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Cancelled
+                        </span>
+                      )}
+                      {!finding.isCancelled && finding.isCorrect && (
                         <span className="ml-2 whitespace-nowrap rounded-full border border-green-300 bg-green-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-700">
                           Correct section
                         </span>
                       )}
                     </div>
-                    <p className={`mt-2 text-sm ${finding.isCorrect ? "text-green-700/80" : "text-slate-700"}`}>
-                      {finding.explanation || (finding.isCorrect ? "Task passed all checks." : "")}
+                    <p className={`mt-2 text-sm ${finding.isCancelled ? "text-slate-400" : finding.isCorrect ? "text-green-700/80" : "text-slate-700"}`}>
+                      {finding.isCancelled
+                        ? "Task was not analyzed due to evaluation cancellation."
+                        : finding.explanation || (finding.isCorrect ? "Task passed all checks." : "")}
                     </p>
-                    {finding.isCorrect && (
+                    {!finding.isCancelled && finding.isCorrect && (
                       <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-green-700">
                         This task is correct.
                       </p>
@@ -565,7 +636,9 @@ export function ProjectView() {
                   <div className="text-right">
                     <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Legislation</p>
                     <p className="mt-1 max-w-[220px] truncate text-sm font-semibold">{finding.legislationName}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">Status: {finding.isCorrect ? "Correct" : "Needs review"}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Status: {finding.isCancelled ? "Cancelled" : finding.isCorrect ? "Correct" : "Needs review"}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -629,12 +702,35 @@ export function ProjectView() {
         <div className="absolute inset-0 z-20 flex items-start justify-center px-6 py-10">
           <div className="w-full max-w-3xl">
             <div className="rounded-3xl border border-slate-200 bg-white/90 p-10 shadow-lg backdrop-blur-md">
-              <h2 className="text-xl font-semibold text-center mb-2">Analyzing project</h2>
-              <p className="text-center text-muted-foreground text-sm mb-8">The full project workflow is still running. Project actions stay disabled until the evaluation finishes.</p>
+              <h2 className="text-xl font-semibold text-center mb-2">
+                {progressStatus.status === "cancelling" ? "Cancelling evaluation" : "Analyzing project"}
+              </h2>
+              <p className="text-center text-muted-foreground text-sm mb-8">
+                {progressStatus.status === "cancelling"
+                  ? "Waiting for in-flight tasks to finish. Remaining tasks will be skipped."
+                  : "The full project workflow is still running. Project actions stay disabled until the evaluation finishes."}
+              </p>
               <UploadChessLoader
                 duration={8}
-                statusText={getShortProjectStatus(progressStatus.status_message, progressStatus.current_task) || "Preparing project analysis..."}
+                statusText={
+                  progressStatus.status === "cancelling"
+                    ? "Cancelling..."
+                    : getShortProjectStatus(progressStatus.status_message, progressStatus.current_task) || "Preparing project analysis..."
+                }
               />
+              {progressStatus.status !== "cancelling" && (
+                <div className="mt-6 flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleCancelProject()}
+                    disabled={isCancelling}
+                  >
+                    <Ban className="h-4 w-4" />
+                    {isCancelling ? "Cancelling..." : "Cancel Evaluation"}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
