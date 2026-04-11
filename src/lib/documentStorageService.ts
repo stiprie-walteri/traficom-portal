@@ -23,6 +23,7 @@ export interface ProjectEvaluationResult {
     legislation_id: string;
     legislation_name: string;
     task: string[];
+    status?: "completed" | "cancelled";
     exists: boolean;
     explanation: string;
     is_correct?: boolean;
@@ -65,7 +66,7 @@ export interface ProjectEvaluationJob {
 
 export interface ProjectEvaluationStatus {
     job_id: string;
-    status: "running" | "completed" | "failed";
+    status: "running" | "completed" | "failed" | "cancelling";
     organization_id: string;
     project_id: string;
     status_message?: string | null;
@@ -203,6 +204,7 @@ export interface ReasoningStep {
 
 export interface EvaluateTaskResult {
     task: string[];
+    status?: "completed" | "cancelled";
     exists: boolean;
     explanation: string;
     is_correct?: boolean;
@@ -223,7 +225,7 @@ export interface EvaluationJob {
 /** GET .../evaluation/status */
 export interface EvaluationStatus {
     job_id: string;
-    status: "running" | "completed" | "failed";
+    status: "running" | "completed" | "failed" | "cancelling";
     total_tasks: number;
     completed_count: number;
     current_task: string[] | null;
@@ -254,6 +256,12 @@ export interface EvaluateTasksResponse {
     document_id: string;
     version_id: string;
     results: EvaluateTaskResult[];
+}
+
+export interface CancelEvaluationResponse {
+    job_id: string;
+    status: "cancelling";
+    message: string;
 }
 
 export interface UploadDocumentParams {
@@ -550,6 +558,16 @@ export class DocumentStorageService {
                 `/orgs/${organizationId}/projects/${projectId}/evaluate`,
                 templateIds && templateIds.length > 0 ? { template_ids: templateIds } : {}
             )
+        );
+        return response.data;
+    }
+
+    async cancelProjectEvaluation(
+        organizationId: string,
+        projectId: string
+    ): Promise<CancelEvaluationResponse> {
+        const response = await this.apiClient.post<CancelEvaluationResponse>(
+            `/orgs/${organizationId}/projects/${projectId}/evaluate/cancel`
         );
         return response.data;
     }
