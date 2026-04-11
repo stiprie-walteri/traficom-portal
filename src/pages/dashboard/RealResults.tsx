@@ -609,20 +609,6 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 </button>
               </div>
               <p className="text-sm text-gray-800 mb-3">{activewarning.warning}</p>
-              {activewarning.references && activewarning.references.length > 0 && (
-                <div className="mb-3">
-                  <h4 className="font-semibold text-xs text-gray-900 mb-1">
-                    References
-                  </h4>
-                  <ul className="text-xs text-gray-700 space-y-1">
-                    {activewarning.references.map((ref, index) => (
-                      <li key={index} className="pl-2 border-l-2 border-gray-500">
-                        {ref}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
               <div className="flex items-center justify-between pt-3 border-t border-gray-300">
                 <button
                   onClick={() => navigateTowarning("prev")}

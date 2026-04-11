@@ -560,7 +560,7 @@ export function DashboardLayout() {
 
       {isCreateProjectOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
-          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className={cn("flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl transition-colors duration-300", newProjectName.trim() && selectedLegislationIds.length > 0 && newProjectFiles.length > 0 ? "border-slate-900" : "border-slate-200")}>
             {isCreatingProject ? (
               <div className="overflow-y-auto p-4 sm:p-6">
                 <div className="rounded-3xl border border-slate-200 bg-white/90 p-10 shadow-lg backdrop-blur-md">
@@ -710,7 +710,7 @@ export function DashboardLayout() {
                       />
                       <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                         {newProjectFiles.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No documents selected yet. You can upload multiple PDFs at once.</p>
+                          <p className="text-sm text-muted-foreground">At least one PDF is required. You can upload multiple PDFs at once.</p>
                         ) : (
                           <div className="space-y-2">
                             {newProjectFiles.map((file) => (
@@ -754,8 +754,9 @@ export function DashboardLayout() {
                       Cancel
                     </Button>
                     <Button
+                      variant="outline"
                       onClick={() => void handleCreateProject()}
-                      disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || isCreatingProject}
+                      disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || newProjectFiles.length === 0 || isCreatingProject}
                     >
                       Create Project
                     </Button>
