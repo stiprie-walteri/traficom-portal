@@ -593,6 +593,7 @@ export function ProjectView() {
                 <Link
                   key={doc.document_id}
                   to={`/dashboard/document/${doc.document_id}`}
+                  state={{ projectId: id }}
                   className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-colors hover:border-slate-300"
                 >
                   <div className="min-w-0">

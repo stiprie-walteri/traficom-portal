@@ -1,11 +1,11 @@
-import { useOutletContext, useParams } from "react-router-dom"
+import { useLocation, useOutletContext, useParams } from "react-router-dom"
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { getAnalysisResult, hasAnalysisResult } from "@/lib/mockData"
 import { RealResults } from "./RealResults"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService } from "@/lib/documentStorageService"
+import { DocumentStorageService, type ProjectComplianceResult, type ProjectEvaluationResult } from "@/lib/documentStorageService"
 import { ChessLoader } from "@/components/ChessLoader"
 import { type NormalizedIssue, type ParseResult } from "@/lib/documentService"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
@@ -51,12 +51,37 @@ function buildParseResult(raw: Record<string, unknown>): ParseResult {
   }
 }
 
+/** Convert project evaluation results into NormalizedIssue[] so RealResults can highlight them inline. */
+function buildIssuesFromProjectCompliance(compliance: ProjectComplianceResult): NormalizedIssue[] {
+  const results: ProjectEvaluationResult[] =
+    compliance.legislations?.flatMap((g) => g.results) ?? compliance.results ?? []
+
+  const issues: NormalizedIssue[] = []
+  let i = 0
+  for (const result of results) {
+    for (const section of result.incorrect_sections ?? []) {
+      if (!section.Quote) continue
+      issues.push({
+        id: `proj-issue-${i++}`,
+        submission_excerpt: section.Quote,
+        explanation: section.Comment || result.explanation,
+        main_code: Array.isArray(result.task) ? result.task.join(" / ") : undefined,
+        legislation_source: result.legislation_name,
+        severity: "error",
+      })
+    }
+  }
+  return issues
+}
+
 export function DocumentView() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
   const { user } = useUser()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
-  const { organizationId } = useOutletContext<DashboardOutletContext>()
+  const { organizationId, selectedProjectId } = useOutletContext<DashboardOutletContext>()
+  const projectId = (location.state as { projectId?: string } | null)?.projectId ?? selectedProjectId
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -80,23 +105,19 @@ export function DocumentView() {
         return
       }
 
-      // 2. Fetch from storage API
+      // 2. Fetch document + project compliance in parallel so all issues are ready before rendering
       try {
-        const response = await storageService.getDocument(organizationId, id)
-        const complianceResult = response.version?.compliance_result
+        const [response, projectComplianceResponse] = await Promise.all([
+          storageService.getDocument(organizationId, id),
+          projectId
+            ? storageService.getProjectCompliance(organizationId, projectId).catch(() => null)
+            : Promise.resolve(null),
+        ])
 
-        if (complianceResult) {
-          // We have a persisted compliance result — reconstruct the ParseResult from it
-          setRealData({
-            parseResult: buildParseResult(complianceResult as Record<string, unknown>),
-            filename: (response.document.title || id) + ".pdf",
-            document_id: id,
-            organization_id: organizationId,
-          })
-        } else {
-          // Document exists but no compliance result yet — show markdown only
-          setRealData({
-            parseResult: {
+        const complianceResult = response.version?.compliance_result
+        const parseResult: ParseResult = complianceResult
+          ? buildParseResult(complianceResult as Record<string, unknown>)
+          : {
               ok: true,
               markdown: response.content_md,
               issues: [],
@@ -105,12 +126,22 @@ export function DocumentView() {
                 organization: response.document.title || undefined,
                 raw: {},
               },
-            },
-            filename: (response.document.title || id) + ".pdf",
-            document_id: id,
-            organization_id: organizationId,
-          })
+            }
+
+        // Merge project evaluation recommendations so highlights are ready on first render
+        if (projectComplianceResponse?.compliance_result) {
+          const projIssues = buildIssuesFromProjectCompliance(projectComplianceResponse.compliance_result)
+          if (projIssues.length > 0) {
+            parseResult.issues = [...projIssues, ...(parseResult.issues ?? [])]
+          }
         }
+
+        setRealData({
+          parseResult,
+          filename: (response.document.title || id) + ".pdf",
+          document_id: id,
+          organization_id: organizationId,
+        })
       } catch (err: unknown) {
         console.error("Error fetching document:", err)
         setError("Document not found.")
@@ -120,7 +151,7 @@ export function DocumentView() {
     }
 
     fetchDoc()
-  }, [id, user, organizationId, storageService])
+  }, [id, user, organizationId, projectId, storageService])
 
   if (isLoading) {
     return <div className="h-screen flex items-center justify-center"><ChessLoader duration={10} /></div>

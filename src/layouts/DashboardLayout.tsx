@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import logoSvg from "@/assets/logo.svg"
-import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
+import { useAuth, useUser, useOrganization, UserButton, SignInButton } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, LegislationTemplate, ProjectEvaluationStatus, ProjectItem, StoredDocument, type BatchUploadFailure } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
@@ -184,6 +184,7 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const { isSignedIn } = useAuth()
   const { user } = useUser()
+  const { organization } = useOrganization()
   const { toast, confirm } = useAppAlert()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
@@ -263,6 +264,11 @@ export function DashboardLayout() {
         return projectItems[0]?.project_id ?? null
       })
     } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 403) {
+        navigate("/no-organization")
+        return
+      }
       console.error(error)
       setProjects([])
       setDocuments([])
@@ -274,7 +280,7 @@ export function DashboardLayout() {
     } finally {
       setIsWorkspaceLoading(false)
     }
-  }, [isSignedIn, storageService, toast])
+  }, [isSignedIn, storageService, toast, navigate])
 
   useEffect(() => {
     void refreshWorkspaceData()
@@ -1157,6 +1163,11 @@ export function DashboardLayout() {
                 <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: "h-7 w-7" } }} />
                 {!isCollapsed && user && (
                   <div className="min-w-0 flex flex-col overflow-hidden">
+                    {organization && (
+                      <span className="whitespace-nowrap text-xs font-semibold text-muted-foreground overflow-hidden text-ellipsis mb-0.5">
+                        {organization.name}
+                      </span>
+                    )}
                     <span className="whitespace-nowrap text-sm font-medium overflow-hidden text-ellipsis">
                       {user.fullName || user.firstName || "User"}
                     </span>
