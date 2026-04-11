@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { DemoLayout } from "@/layouts/DemoLayout"
 import { Upload } from "@/pages/dashboard/Upload"
 import { DocumentView } from "@/pages/dashboard/DocumentView"
+import { MarkdownEditorView } from "@/pages/dashboard/MarkdownEditorView"
 import { ProjectView } from "@/pages/dashboard/ProjectView"
 import { DashboardHome } from "@/pages/dashboard/DashboardHome"
 import { Example1 } from "@/pages/dashboard/Example1"
@@ -30,6 +31,7 @@ function App() {
             <Route path="upload" element={<Upload />} />
             <Route path="project/:id" element={<ProjectView />} />
             <Route path="document/:id" element={<DocumentView />} />
+            <Route path="document/:id/editor" element={<MarkdownEditorView />} />
             <Route path="real-results" element={<RealResults />} />
           </Route>
         </Route>

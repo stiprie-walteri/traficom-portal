@@ -12,6 +12,14 @@ import {
   type ProjectItem,
   type StoredDocument,
 } from "@/lib/documentStorageService"
+import {
+  extractNormalizedIssues,
+  getIssueFixLocation,
+  getIssueProblem,
+  getIssueSolution,
+  getIssueSuggestedInsertText,
+  getIssueTitle,
+} from "@/lib/documentService"
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { ProjectProcessLoader } from "@/components/ProjectProcessLoader"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
@@ -41,8 +49,12 @@ function getShortProjectStatus(statusMessage?: string | null, currentTask?: stri
 
 type FindingRow = {
   legislationName: string
+  title: string
   taskLabel: string
   explanation: string
+  solution: string
+  suggestedText: string
+  fixLocation: string | null
   missingSections: string[]
   incorrectSectionsCount: number
   correctnessScore?: number
@@ -57,7 +69,12 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
   let scoredItems = 0
 
   for (const item of results) {
-    if (item.exists === false) findings += 1
+    const issueCount = item.issues?.length || 0
+    if (issueCount > 0) {
+      findings += issueCount
+    } else if (item.exists === false) {
+      findings += 1
+    }
     missingSections += item.missing_sections?.length || 0
     if (typeof item.correctness_score === "number") {
       correctnessTotal += item.correctness_score
@@ -75,16 +92,41 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
 }
 
 function buildFindingRows(results: ProjectEvaluationResult[]): FindingRow[] {
-  return results
-    .filter((result) => result.exists === false)
-    .map((result) => ({
-      legislationName: result.legislation_name,
-      taskLabel: Array.isArray(result.task) ? result.task.join(" / ") : "Finding",
-      explanation: result.explanation,
+  return results.flatMap<FindingRow>((result) => {
+    const taskLabel = Array.isArray(result.task) ? result.task.join(" / ") : "Finding"
+    const base = {
+      legislationName: result.legislation_name || "Legislation",
+      taskLabel,
       missingSections: result.missing_sections || [],
       incorrectSectionsCount: result.incorrect_sections?.length || 0,
       correctnessScore: result.correctness_score,
-    }))
+    }
+    const issues = extractNormalizedIssues(result)
+
+    if (issues.length > 0) {
+      return issues.map((issue) => ({
+        ...base,
+        title: getIssueTitle(issue),
+        explanation: getIssueProblem(issue),
+        solution: getIssueSolution(issue),
+        suggestedText: getIssueSuggestedInsertText(issue),
+        fixLocation: getIssueFixLocation(issue),
+      }))
+    }
+
+    if (result.exists === false) {
+      return [{
+        ...base,
+        title: taskLabel,
+        explanation: result.explanation,
+        solution: "",
+        suggestedText: "",
+        fixLocation: null,
+      }]
+    }
+
+    return []
+  })
 }
 
 export function ProjectView() {
@@ -498,9 +540,26 @@ export function ProjectView() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <FileWarning className="h-4 w-4 text-amber-600" />
-                    <p className="truncate text-sm font-semibold">{finding.taskLabel}</p>
+                    <p className="truncate text-sm font-semibold">{finding.title}</p>
                   </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{finding.taskLabel}</p>
                   <p className="mt-2 text-sm text-slate-700">{finding.explanation}</p>
+                  {(finding.solution || finding.suggestedText) && (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
+                      {finding.solution && (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-950">{finding.solution}</p>
+                      )}
+                      {finding.suggestedText && finding.suggestedText !== finding.solution && (
+                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-2 text-xs text-emerald-950">
+                          {finding.suggestedText}
+                        </pre>
+                      )}
+                      {finding.fixLocation && (
+                        <p className="mt-2 text-xs text-emerald-800">{finding.fixLocation}</p>
+                      )}
+                    </div>
+                  )}
                   {finding.missingSections.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {finding.missingSections.map((section) => (

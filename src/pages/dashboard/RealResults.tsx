@@ -1,12 +1,21 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from "react"
-import { useLocation } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
 import { Badge } from "@/components/ui/badge"
-import documentService, { ParseResult, NormalizedIssue } from "@/lib/documentService"
+import documentService, {
+  ParseResult,
+  NormalizedIssue,
+  getIssueFixLocation,
+  getIssueProblem,
+  getIssueReferences,
+  getIssueSolution,
+  getIssueSuggestedInsertText,
+  getIssueTitle,
+} from "@/lib/documentService"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, DocumentVersion } from "@/lib/documentStorageService"
 import { History } from "lucide-react"
@@ -27,7 +36,7 @@ interface RealResultsProps {
 
 export function RealResults({ storedData, documentOnly = false }: RealResultsProps = {}) {
   const location = useLocation()
-  const [activewarning, setActivewarning] = useState<{ id: string; text: string; warning: string; references: string[] } | null>(null)
+  const [activeIssue, setActiveIssue] = useState<NormalizedIssue | null>(null)
   // Use stored data if provided, otherwise use location state
   const filename = storedData?.filename || (location.state?.filename as string | undefined)
   const [showwarningsList, setShowwarningsList] = useState(false)
@@ -277,10 +286,11 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     }, 50)
   }
 
-  const navigateTowarning = (direction: 'prev' | 'next') => {
-    if (!activewarning) return
+  const navigateToIssue = (direction: 'prev' | 'next') => {
+    if (!activeIssue) return
 
-    const currentIndex = issues.findIndex(tc => tc.id === activewarning.id)
+    const currentIndex = issues.findIndex(tc => tc.id === activeIssue.id)
+    if (currentIndex === -1) return
     let newIndex: number
 
     if (direction === 'prev') {
@@ -289,11 +299,11 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       newIndex = currentIndex < issues.length - 1 ? currentIndex + 1 : 0
     }
 
-    const newwarning = issues[newIndex]
-    setActivewarning({ id: newwarning.id, text: newwarning.submission_excerpt ?? '', warning: newwarning.explanation ?? '', references: newwarning.main_code ? [newwarning.main_code] : [] })
+    const newIssue = issues[newIndex]
+    setActiveIssue(newIssue)
 
     // Scroll to the element only if it's not in view
-    const element = document.getElementById(newwarning.id)
+    const element = document.getElementById(newIssue.id)
     if (element) {
       const rect = element.getBoundingClientRect()
       const isInView = rect.top >= 0 && rect.bottom <= window.innerHeight
@@ -331,8 +341,10 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     // Process each issue as a warning pair
     const matchedIds: string[] = []
     const unmatchedIds: string[] = []
-    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
-      const references = main_code ? [main_code] : []
+    issues.forEach((issue) => {
+      const { id } = issue
+      const highlightText = issue.submission_excerpt ?? issue.current_section?.quote ?? ''
+      const warning = getIssueProblem(issue)
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
       const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
       const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
@@ -392,9 +404,6 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
         span.style.webkitUserSelect = 'none'
         span.title = warning
         span.dataset.warningId = id
-        span.dataset.warningText = highlightText ?? ''
-        span.dataset.warning = warning ?? ''
-        span.dataset.references = JSON.stringify(references)
 
         if (affectedNodes.length === 1) {
           // Single node case
@@ -491,25 +500,22 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     const warningId = target.dataset.warningId
 
     if (warningId) {
-      const warningText = target.dataset.warningText
-      const warning = target.dataset.warning
-      const referencesStr = target.dataset.references
-
-      if (warningText && warning && referencesStr) {
-        // Direct state update
-        setActivewarning({
-          id: warningId,
-          text: warningText,
-          warning,
-          references: JSON.parse(referencesStr)
-        })
+      const issue = issues.find((item) => item.id === warningId)
+      if (issue) {
+        setActiveIssue(issue)
         e.stopPropagation()
       }
     }
   }
 
+  const activeIssueReferences = activeIssue ? getIssueReferences(activeIssue) : []
+  const activeIssueSolution = activeIssue ? getIssueSolution(activeIssue) : ""
+  const activeIssueSuggestedText = activeIssue ? getIssueSuggestedInsertText(activeIssue) : ""
+  const activeIssueFixLocation = activeIssue ? getIssueFixLocation(activeIssue) : null
+  const showActiveSuggestedText = activeIssueSuggestedText && activeIssueSuggestedText !== activeIssueSolution
+
   return (
-    <div className="relative p-8" onClick={() => setActivewarning(null)}>
+    <div className="relative p-8" onClick={() => setActiveIssue(null)}>
 
       {/* Page content shown only after loading */}
       {isLoading ? (
@@ -563,11 +569,16 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 </button>
               </div>
               <div className="space-y-2">
-                {issues.slice(0, 3).map((item) => (
+                {issues.map((item) => {
+                  const solution = getIssueSolution(item)
+                  const suggestedText = getIssueSuggestedInsertText(item)
+                  const fixText = solution || suggestedText
+
+                  return (
                   <button
                     key={item.id}
                     onClick={() => {
-                      setActivewarning({ id: item.id, text: item.submission_excerpt ?? '', warning: item.explanation ?? '', references: item.main_code ? [item.main_code] : [] });
+                      setActiveIssue(item);
                       setShowwarningsList(false);
                       const element = document.getElementById(item.id);
                       if (element) {
@@ -580,41 +591,63 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                     className="w-full text-left p-2 hover:bg-gray-100 rounded border border-gray-300"
                   >
                     <p className="text-xs text-gray-800 font-medium mb-1 line-clamp-2">
-                      {item.submission_excerpt}
+                      {getIssueTitle(item)}
                     </p>
                     <p className="text-xs text-gray-600 line-clamp-1">
-                      {item.explanation}
+                      {getIssueProblem(item)}
                     </p>
+                    {fixText && (
+                      <p className="mt-1 text-xs text-emerald-700 line-clamp-2">
+                        How to fix: {fixText}
+                      </p>
+                    )}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
 
-          {activewarning && (
+          {activeIssue && (
             <div
               className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-6 md:max-w-md bg-white/90 border border-gray-400 md:rounded rounded-t-lg shadow-lg p-6 md:p-4 z-20 md:z-50 backdrop-blur-md"
               style={{ willChange: "contents" }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-2">
-                <h3 className="font-semibold text-sm text-gray-900">Warning</h3>
+                <h3 className="font-semibold text-sm text-gray-900">{getIssueTitle(activeIssue)}</h3>
                 <button
-                  onClick={() => setActivewarning(null)}
+                  onClick={() => setActiveIssue(null)}
                   className="text-gray-500 hover:text-gray-800 ml-2"
                   style={{ touchAction: "manipulation" }}
                 >
                   ✕
                 </button>
               </div>
-              <p className="text-sm text-gray-800 mb-3">{activewarning.warning}</p>
-              {activewarning.references && activewarning.references.length > 0 && (
+              <p className="text-sm text-gray-800 mb-3 whitespace-pre-wrap">{getIssueProblem(activeIssue)}</p>
+              {(activeIssueSolution || showActiveSuggestedText) && (
+                <div className="mb-3 rounded border border-emerald-200 bg-emerald-50 p-3">
+                  <h4 className="font-semibold text-xs text-emerald-900 mb-1">How to fix</h4>
+                  {activeIssueSolution && (
+                    <p className="text-xs text-emerald-900 whitespace-pre-wrap">{activeIssueSolution}</p>
+                  )}
+                  {showActiveSuggestedText && (
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-white/80 p-2 text-xs text-emerald-950">
+                      {activeIssueSuggestedText}
+                    </pre>
+                  )}
+                  {activeIssueFixLocation && (
+                    <p className="mt-2 text-xs text-emerald-800">{activeIssueFixLocation}</p>
+                  )}
+                </div>
+              )}
+              {activeIssueReferences.length > 0 && (
                 <div className="mb-3">
                   <h4 className="font-semibold text-xs text-gray-900 mb-1">
                     References
                   </h4>
                   <ul className="text-xs text-gray-700 space-y-1">
-                    {activewarning.references.map((ref, index) => (
+                    {activeIssueReferences.map((ref, index) => (
                       <li key={index} className="pl-2 border-l-2 border-gray-500">
                         {ref}
                       </li>
@@ -624,7 +657,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
               )}
               <div className="flex items-center justify-between pt-3 border-t border-gray-300">
                 <button
-                  onClick={() => navigateTowarning("prev")}
+                  onClick={() => navigateToIssue("prev")}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
                   style={{ touchAction: "manipulation" }}
                   title="Previous warning"
@@ -645,11 +678,11 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                   Previous
                 </button>
                 <span className="text-xs text-gray-600">
-                  {issues.findIndex((tc) => tc.id === activewarning.id) + 1} {" "}
+                  {issues.findIndex((tc) => tc.id === activeIssue.id) + 1} {" "}
                   / {issues.length}
                 </span>
                 <button
-                  onClick={() => navigateTowarning("next")}
+                  onClick={() => navigateToIssue("next")}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
                   style={{ touchAction: "manipulation" }}
                   title="Next warning"
@@ -680,33 +713,43 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                   {filename || documentSummary.name}
                 </h1>
 
-                {!documentOnly && versions.length > 1 && (
-                  <div className="flex items-center gap-3 bg-white/50 border border-slate-300 p-2 rounded-sm shadow-sm">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                      <History className="h-4 w-4" />
-                      <span>Version {currentVersionNo}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {documentId && (
+                    <Button asChild variant="outline" size="sm">
+                      <Link to={`/dashboard/document/${documentId}/editor`}>
+                        Edit Markdown
+                      </Link>
+                    </Button>
+                  )}
+
+                  {!documentOnly && versions.length > 1 && (
+                    <div className="flex items-center gap-3 bg-white/50 border border-slate-300 p-2 rounded-sm shadow-sm">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                        <History className="h-4 w-4" />
+                        <span>Version {currentVersionNo}</span>
+                      </div>
+                      <div className="h-4 w-px bg-slate-300 mx-1" />
+                      <div className="flex gap-1">
+                        {versions.slice(0, 5).map((v) => (
+                          <Button
+                            key={v.version_id}
+                            variant={currentVersionNo === v.version_no ? "default" : "ghost"}
+                            size="sm"
+                            className="h-8 px-2 min-w-8"
+                            onClick={() => handleVersionChange(v.version_no)}
+                            disabled={isLoadingVersions || isLoading}
+                            title={v.message || `Version ${v.version_no}`}
+                          >
+                            {v.version_no}
+                          </Button>
+                        ))}
+                        {versions.length > 5 && (
+                          <span className="text-xs text-slate-400 self-center ml-1">...</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="h-4 w-px bg-slate-300 mx-1" />
-                    <div className="flex gap-1">
-                      {versions.slice(0, 5).map((v) => (
-                        <Button
-                          key={v.version_id}
-                          variant={currentVersionNo === v.version_no ? "default" : "ghost"}
-                          size="sm"
-                          className="h-8 px-2 min-w-8"
-                          onClick={() => handleVersionChange(v.version_no)}
-                          disabled={isLoadingVersions || isLoading}
-                          title={v.message || `Version ${v.version_no}`}
-                        >
-                          {v.version_no}
-                        </Button>
-                      ))}
-                      {versions.length > 5 && (
-                        <span className="text-xs text-slate-400 self-center ml-1">...</span>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {!documentOnly && (

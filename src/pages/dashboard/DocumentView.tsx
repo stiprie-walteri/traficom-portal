@@ -7,47 +7,35 @@ import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService } from "@/lib/documentStorageService"
 import { ChessLoaderLong } from "@/components/ChessLoaderLong"
-import { type NormalizedIssue, type ParseResult } from "@/lib/documentService"
+import { extractNormalizedIssues, type ParseResult } from "@/lib/documentService"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
-/** Convert a raw compliance result JSON (as stored in DB) into a ParseResult for RealResults. */
-function buildParseResult(raw: Record<string, unknown>): ParseResult {
-  const markdown = typeof raw["markdown"] === "string" ? raw["markdown"] : ""
-  const metrics = (raw["metrics"] && typeof raw["metrics"] === "object")
-    ? (raw["metrics"] as Record<string, unknown>)
+/** Convert a raw compliance result JSON into a ParseResult for RealResults. */
+function buildParseResult(
+  raw: Record<string, unknown>,
+  fallbackMarkdown: string,
+  fallbackTitle: string
+): ParseResult {
+  const markdown = typeof raw["markdown"] === "string" ? raw["markdown"] : fallbackMarkdown
+  const metrics = raw["metrics"] && typeof raw["metrics"] === "object"
+    ? raw["metrics"] as Record<string, unknown>
     : undefined
-
   const metadata = (raw["parsed_codes"] as Record<string, unknown> | undefined)?.["document_metadata"] as Record<string, unknown> | undefined ?? {}
-  const rawIssues: Record<string, unknown>[] =
-    Array.isArray((raw["issues"] as Record<string, unknown> | undefined)?.["issues"])
-      ? ((raw["issues"] as Record<string, unknown>)["issues"] as Record<string, unknown>[])
-      : []
-
-  const issues: NormalizedIssue[] = rawIssues.map((r, i) => ({
-    id: `issue-${i}`,
-    code: typeof r["code"] === "string" ? r["code"] : undefined,
-    main_code: typeof r["main_code"] === "string" ? r["main_code"] : undefined,
-    submission_excerpt: typeof r["submission_excerpt"] === "string" ? r["submission_excerpt"] : undefined,
-    explanation: typeof r["explanation"] === "string" ? r["explanation"] : undefined,
-    legislation_source: typeof r["legislation_source"] === "string" ? r["legislation_source"] : undefined,
-    severity: typeof r["severity"] === "string" ? r["severity"] : undefined,
-    submission_sections: Array.isArray(r["submission_sections"]) ? r["submission_sections"] as string[] : undefined,
-    raw: r,
-  }))
+  const summaryText = [metadata["organization"], metadata["approval_number"]].filter(Boolean).join(" - ") || fallbackTitle
 
   return {
     ok: true,
     markdown,
-    issues,
+    issues: extractNormalizedIssues(raw),
     metrics,
     summary: {
-      text: [metadata["organization"], metadata["approval_number"]].filter(Boolean).join(" — ") as string,
-      organization: typeof metadata["organization"] === "string" ? metadata["organization"] : undefined,
+      text: summaryText,
+      organization: typeof metadata["organization"] === "string" ? metadata["organization"] : fallbackTitle || undefined,
       approval_number: typeof metadata["approval_number"] === "string" ? metadata["approval_number"] : undefined,
       parsed_date: typeof metadata["parsed_date"] === "string" ? metadata["parsed_date"] : undefined,
       raw: metadata,
     },
-    raw: raw as Record<string, unknown>,
+    raw,
   }
 }
 
@@ -73,28 +61,35 @@ export function DocumentView() {
       setIsLoading(true)
       setError(null)
 
-      // 1. Check in-memory session cache first (populated right after upload in same session)
       if (hasAnalysisResult(id)) {
         setRealData(getAnalysisResult(id))
         setIsLoading(false)
         return
       }
 
-      // 2. Fetch from storage API
       try {
-        const response = await storageService.getDocument(organizationId, id)
-        const complianceResult = response.version?.compliance_result
+        const [response, evaluationStatus] = await Promise.all([
+          storageService.getDocument(organizationId, id),
+          storageService.getEvaluationStatus(organizationId, id).catch(() => null),
+        ])
+
+        const savedComplianceResult = response.version?.compliance_result
+        const statusComplianceResult = evaluationStatus?.results?.length ? evaluationStatus : null
+        const complianceResult = savedComplianceResult || statusComplianceResult
+        const filename = (response.document.title || id) + ".pdf"
 
         if (complianceResult) {
-          // We have a persisted compliance result — reconstruct the ParseResult from it
           setRealData({
-            parseResult: buildParseResult(complianceResult as Record<string, unknown>),
-            filename: (response.document.title || id) + ".pdf",
+            parseResult: buildParseResult(
+              complianceResult as Record<string, unknown>,
+              response.content_md,
+              response.document.title || ""
+            ),
+            filename,
             document_id: id,
             organization_id: organizationId,
           })
         } else {
-          // Document exists but no compliance result yet — show markdown only
           setRealData({
             parseResult: {
               ok: true,
@@ -106,7 +101,7 @@ export function DocumentView() {
                 raw: {},
               },
             },
-            filename: (response.document.title || id) + ".pdf",
+            filename,
             document_id: id,
             organization_id: organizationId,
           })
@@ -119,7 +114,7 @@ export function DocumentView() {
       }
     }
 
-    fetchDoc()
+    void fetchDoc()
   }, [id, user, organizationId, storageService])
 
   if (isLoading) {

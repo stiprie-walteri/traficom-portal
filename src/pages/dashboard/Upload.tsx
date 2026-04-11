@@ -19,7 +19,15 @@ import {
 import { InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService, StoredDocument, EvaluateTaskResult, EvaluationStatus, DocumentEvaluationStatus } from "@/lib/documentStorageService"
+import { DocumentStorageService, StoredDocument, EvaluateTaskResult, EvaluationStatus, DocumentEvaluationStatus, DocumentCompliancePayload } from "@/lib/documentStorageService"
+import {
+  extractNormalizedIssues,
+  getIssueFixLocation,
+  getIssueProblem,
+  getIssueSolution,
+  getIssueSuggestedInsertText,
+  getIssueTitle,
+} from "@/lib/documentService"
 import { useAppAlert } from "@/hooks/useAppAlert"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
@@ -30,6 +38,55 @@ const STEP_LABELS: Record<UploadStep, string> = {
   uploading: "Uploading document...",
   done: "Complete",
   error: "Failed",
+}
+
+function getComplianceResults(payload: DocumentCompliancePayload | null): EvaluateTaskResult[] | null {
+  if (!payload) return null
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload.results)) return payload.results
+  if (Array.isArray(payload.legislations)) {
+    return payload.legislations.flatMap((group) => group.results || [])
+  }
+
+  return null
+}
+
+function EvaluationIssues({ result }: { result: EvaluateTaskResult }) {
+  const issues = extractNormalizedIssues(result)
+
+  if (issues.length === 0) return null
+
+  return (
+    <div className="mt-2">
+      <p className="text-xs font-semibold text-emerald-700">Suggestions and fixes:</p>
+      <div className="mt-1 space-y-2">
+        {issues.map((issue) => {
+          const solution = getIssueSolution(issue)
+          const suggestedText = getIssueSuggestedInsertText(issue)
+          const fixLocation = getIssueFixLocation(issue)
+
+          return (
+            <div key={issue.id} className="rounded border border-emerald-200 bg-emerald-50 p-2 text-xs">
+              <p className="font-medium text-emerald-950">{getIssueTitle(issue)}</p>
+              <p className="mt-1 text-emerald-900">{getIssueProblem(issue)}</p>
+              {(solution || suggestedText) && (
+                <div className="mt-2">
+                  <p className="font-semibold text-emerald-950">How to fix</p>
+                  {solution && <p className="mt-1 whitespace-pre-wrap text-emerald-900">{solution}</p>}
+                  {suggestedText && suggestedText !== solution && (
+                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/80 p-2 text-emerald-950">
+                      {suggestedText}
+                    </pre>
+                  )}
+                  {fixLocation && <p className="mt-1 text-emerald-800">{fixLocation}</p>}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export function Upload() {
@@ -162,11 +219,7 @@ export function Upload() {
       try {
         const res = await storageService.getCompliance(organizationId, evalDocId);
         if (res.compliance_result) {
-          const actualResults = Array.isArray(res.compliance_result)
-            ? res.compliance_result
-            : (res.compliance_result as any).results || null;
-            
-          setEvalResults(actualResults);
+          setEvalResults(getComplianceResults(res.compliance_result));
         } else {
           setEvalResults(null);
         }
@@ -680,7 +733,7 @@ export function Upload() {
                        </div>
                     ) : status.compliance_result != null ? (
                        <div className="flex items-center justify-between">
-                         <span className="text-green-600 font-medium flex items-center gap-1.5 text-xs"><CheckCircle2 className="h-4 w-4" /> Results Ready ({status.compliance_result.length} items)</span>
+                         <span className="text-green-600 font-medium flex items-center gap-1.5 text-xs"><CheckCircle2 className="h-4 w-4" /> Results Ready ({getComplianceResults(status.compliance_result)?.length ?? 0} items)</span>
                          <Button variant="outline" size="sm" onClick={() => navigate(`/dashboard/document/${doc.document_id}`)}>View Results</Button>
                        </div>
                     ) : status.status === "failed" ? (
@@ -901,6 +954,7 @@ export function Upload() {
                       {expandedResults.has(i) && (
                         <div className="px-3 pb-3 space-y-2">
                           <p className="text-xs text-muted-foreground leading-relaxed">{r.explanation}</p>
+                          <EvaluationIssues result={r} />
                           {r.missing_sections && r.missing_sections.length > 0 && (
                             <div className="mt-2">
                               <p className="text-xs font-semibold text-red-500">Missing Sections:</p>
