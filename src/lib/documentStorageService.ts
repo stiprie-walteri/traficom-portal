@@ -426,7 +426,6 @@ export class DocumentStorageService {
      */
     async uploadDocument(params: UploadDocumentParams): Promise<UploadResponse> {
         const formData = new FormData();
-        formData.append("organization_id", params.organizationId);
         formData.append("file", params.file);
 
         if (params.projectId) formData.append("project_id", params.projectId);
