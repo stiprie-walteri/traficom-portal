@@ -336,6 +336,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     // Process each issue as a warning pair
     const matchedIds: string[] = []
     const unmatchedIds: string[] = []
+    const matchPositions = new Map<string, number>()
     issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
       const references = main_code ? [main_code] : []
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
@@ -344,6 +345,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
 
       if (normalizedIndex !== -1) {
         matchedIds.push(id)
+        matchPositions.set(id, normalizedIndex)
         // Map back to original text position for start
         let normalizedPos = 0
         let originalStartIndex = 0
@@ -483,8 +485,11 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       }
     })
 
-    // Keep only matched issues for inline highlights; move unmatched to the separate findings section
-    setIssues(prev => prev.filter(i => matchedIds.includes(i.id)))
+    // Keep only matched issues, sorted by their position in the document text (top to bottom)
+    const sortedMatchedIssues = issues
+      .filter(i => matchedIds.includes(i.id))
+      .sort((a, b) => (matchPositions.get(a.id) ?? 0) - (matchPositions.get(b.id) ?? 0))
+    setIssues(sortedMatchedIssues)
     setUnmatchedIssues(prev => [...prev.filter(i => !unmatchedIds.includes(i.id)), ...issues.filter(i => unmatchedIds.includes(i.id))])
   }  // Event delegation handler - use click but with optimized spans
   const handleArticleClick = (e: React.MouseEvent) => {
