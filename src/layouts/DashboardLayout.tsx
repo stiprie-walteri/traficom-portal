@@ -23,7 +23,7 @@ import { useAuth, useUser, UserButton, SignInButton } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, LegislationTemplate, ProjectEvaluationStatus, ProjectItem, StoredDocument } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
-import { ProjectProcessLoader } from "@/components/ProjectProcessLoader"
+import { UploadChessLoader } from "@/components/ChessLoader"
 
 function formatProjectEta(secondsRemaining?: number | null, completionAt?: string | null) {
   if (typeof secondsRemaining === "number" && secondsRemaining > 0) {
@@ -40,6 +40,7 @@ function formatProjectEta(secondsRemaining?: number | null, completionAt?: strin
 
   return null
 }
+
 
 function getShortProjectStatus(status?: ProjectEvaluationStatus | null) {
   if (!status) return null
@@ -151,7 +152,7 @@ export function DashboardLayout() {
   const [createAndRunAnalysis, setCreateAndRunAnalysis] = useState(true)
   const [isCreatingProject, setIsCreatingProject] = useState(false)
   const [createProjectStage, setCreateProjectStage] = useState<string | null>(null)
-  const [createProjectEvaluationStatus, setCreateProjectEvaluationStatus] = useState<ProjectEvaluationStatus | null>(null)
+
   const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(null)
   const [projectUploadState, setProjectUploadState] = useState<{
     projectId: string
@@ -339,7 +340,6 @@ export function DashboardLayout() {
     setIsCreatingProject(true)
     try {
       setCreateProjectStage("Creating project workspace...")
-      setCreateProjectEvaluationStatus(null)
       const project = await storageService.createProject(organizationId, {
         name,
         description: newProjectDescription.trim() || undefined,
@@ -378,7 +378,7 @@ export function DashboardLayout() {
           {
             intervalMs: 3500,
             onProgress: (status) => {
-              setCreateProjectEvaluationStatus(status)
+
               setCreateProjectStage(
                 getShortProjectStatus(status)
                 || `Running project analysis (${status.completed_count}/${status.total_tasks || 1})...`
@@ -388,11 +388,7 @@ export function DashboardLayout() {
             onTransientError: (message, lastStatus) => {
               if (!lastStatus) return
 
-              setCreateProjectEvaluationStatus({
-                ...lastStatus,
-                status: "running",
-                status_message: message,
-              })
+
               setCreateProjectStage(message)
               setProjectEvaluationStatus(project.project_id, {
                 ...lastStatus,
@@ -441,7 +437,6 @@ export function DashboardLayout() {
     } finally {
       setIsCreatingProject(false)
       setCreateProjectStage(null)
-      setCreateProjectEvaluationStatus(null)
     }
   }
 
@@ -546,51 +541,7 @@ export function DashboardLayout() {
     setNewProjectFiles(files)
   }
 
-  const createProjectLoaderSteps: Array<{
-    label: string
-    status: "pending" | "active" | "done"
-  }> = [
-    {
-      label: "Create project workspace",
-      status: createProjectStage === "Creating project workspace..."
-        ? "active"
-        : createProjectStage
-          ? "done"
-          : "pending",
-    },
-    {
-      label: newProjectFiles.length > 0 ? `Upload ${newProjectFiles.length} document(s)` : "No documents to upload",
-      status: newProjectFiles.length === 0
-        ? "done"
-        : createProjectStage?.startsWith("Uploading")
-          ? "active"
-          : createProjectStage && createProjectStage !== "Creating project workspace..."
-            ? "done"
-            : "pending",
-    },
-    {
-      label: createAndRunAnalysis ? "Start full project analysis" : "Skip automatic analysis",
-      status: !createAndRunAnalysis
-        ? "done"
-        : createProjectStage === "Starting full project analysis..."
-          ? "active"
-          : createProjectEvaluationStatus || (createProjectStage && createProjectStage !== "Creating project workspace..." && !createProjectStage.startsWith("Uploading"))
-            ? "done"
-            : createProjectStage === null
-            ? "pending"
-            : "pending",
-    },
-    {
-      label: createAndRunAnalysis ? "Wait for project evaluation to finish" : "Project ready",
-      status: !createAndRunAnalysis
-        ? "done"
-        : createProjectEvaluationStatus?.status === "running"
-          ? "active"
-          : createProjectEvaluationStatus?.status === "completed"
-            ? "done"
-            : "pending",
-    },
-  ]
+
 
   return (
     <div className="relative flex h-screen w-full">
@@ -606,22 +557,18 @@ export function DashboardLayout() {
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             {isCreatingProject ? (
               <div className="overflow-y-auto p-4 sm:p-6">
-                <ProjectProcessLoader
-                  title="Setting up project"
-                  description={createAndRunAnalysis
-                    ? "Creating the project, uploading documents, and waiting for the full project analysis to finish."
-                    : "Creating the project and uploading the selected documents."}
-                  completedCount={createProjectEvaluationStatus?.completed_count}
-                  totalTasks={createProjectEvaluationStatus?.total_tasks}
-                  progressPercent={createProjectEvaluationStatus?.progress_percent}
-                  statusMessage={createProjectEvaluationStatus?.status_message}
-                  etaLabel={formatProjectEta(
-                    createProjectEvaluationStatus?.estimated_seconds_remaining,
-                    createProjectEvaluationStatus?.estimated_completion_at
-                  )}
-                  currentTask={createProjectStage}
-                  steps={createProjectLoaderSteps}
-                />
+                <div className="rounded-3xl border border-slate-200 bg-white/90 p-10 shadow-lg backdrop-blur-md">
+                  <h2 className="text-xl font-semibold text-center mb-2">Setting up project</h2>
+                  <p className="text-center text-muted-foreground text-sm mb-8">
+                    {createAndRunAnalysis
+                      ? "Creating the project, uploading documents, and waiting for the full project analysis to finish."
+                      : "Creating the project and uploading the selected documents."}
+                  </p>
+                  <UploadChessLoader
+                    duration={8}
+                    statusText={createProjectStage || "Preparing project workspace"}
+                  />
+                </div>
               </div>
             ) : (
               <>
@@ -818,17 +765,16 @@ export function DashboardLayout() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="overflow-y-auto p-4 sm:p-6">
-              <ProjectProcessLoader
-                title="Uploading document"
-                description={`Adding ${projectUploadState.fileName} to ${projectUploadState.projectName}.`}
-                currentTask="Preparing document for this project"
-                steps={[
-                  {
-                    label: `Upload ${projectUploadState.fileName}`,
-                    status: "active",
-                  },
-                ]}
-              />
+              <div className="rounded-3xl border border-slate-200 bg-white/90 p-10 shadow-lg backdrop-blur-md">
+                <h2 className="text-xl font-semibold text-center mb-2">Uploading document</h2>
+                <p className="text-center text-muted-foreground text-sm mb-8">
+                  Adding {projectUploadState.fileName} to {projectUploadState.projectName}.
+                </p>
+                <UploadChessLoader
+                  duration={3}
+                  statusText="Preparing document for this project"
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -7,16 +7,17 @@ import {
   File,
   X,
   FileText,
-  ChevronDown,
-  ChevronUp,
   AlertCircle,
   CheckCircle2,
   Trash2,
   Plus,
   Bot,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle
 } from "lucide-react"
-import { InlineChessLoader } from "@/components/ChessLoader"
+import { UploadChessLoader, InlineChessLoader } from "@/components/ChessLoader"
 import { cn } from "@/lib/utils"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, StoredDocument, EvaluateTaskResult, EvaluationStatus, DocumentEvaluationStatus, DocumentCompliancePayload } from "@/lib/documentStorageService"
@@ -97,6 +98,7 @@ export function Upload() {
   const [step, setStep] = useState<UploadStep>("idle")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isLearnMoreOpen, setIsLearnMoreOpen] = useState(false)
+  const [isHowToOpen, setIsHowToOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // New state for querying chunks
@@ -181,7 +183,7 @@ export function Upload() {
 
   // Map polling looping effect
   useEffect(() => {
-    let timeout: NodeJS.Timeout
+    let timeout: ReturnType<typeof setTimeout>
     const poll = async () => {
       const shouldContinue = await fetchStatuses()
       if (shouldContinue) {
@@ -407,6 +409,86 @@ export function Upload() {
 
   return (
     <div className="w-full">
+      {/* How to use it button — top right */}
+      <div className="flex justify-end px-6 pt-4">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs font-medium border-slate-300 dark:border-slate-600"
+          onClick={() => setIsHowToOpen(true)}
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+          How to use it
+        </Button>
+      </div>
+
+      {/* How to use it modal */}
+      {isHowToOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setIsHowToOpen(false)}
+        >
+          <div
+            className="relative bg-slate-100 dark:bg-slate-200 border border-slate-300 rounded-lg shadow-2xl max-w-lg w-full mx-4 p-8 overflow-y-auto max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              onClick={() => setIsHowToOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h2 className="text-xl font-bold mb-6 text-black font-['Courier_New',monospace]">How to use CheckMate</h2>
+
+            {/* Section 1 */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white text-xs font-bold shrink-0">1</div>
+                <h3 className="font-semibold text-sm text-black">Upload your PDF document</h3>
+              </div>
+              <ul className="text-sm text-black space-y-1.5 pl-8 list-disc">
+                <li>Drag and drop a PDF onto the upload area, or click it to browse your files.</li>
+                <li>Only PDF files are accepted (max 50 MB).</li>
+                <li>Give your document a title and an optional description, then click <strong>Upload &amp; Analyse</strong>.</li>
+                <li>The chess-board loader will appear while the file is being processed — this may take a moment.</li>
+              </ul>
+            </div>
+
+            {/* Section 2 */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white text-xs font-bold shrink-0">2</div>
+                <h3 className="font-semibold text-sm text-black">Run AI compliance analysis</h3>
+              </div>
+              <ul className="text-sm text-black space-y-1.5 pl-8 list-disc">
+                <li>Once uploaded, open the document from the sidebar or the document list.</li>
+                <li>Select an <strong>evaluation template</strong> matching your regulation (e.g. MICA Programme of Operations) or write custom task items.</li>
+                <li>Click <strong>Run Evaluation</strong> — the AI agent will check each section of your document against the selected requirements.</li>
+                <li>Results show which sections pass, have warnings, or fail compliance, with detailed explanations for each finding.</li>
+              </ul>
+            </div>
+
+            {/* Section 3 */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white text-xs font-bold shrink-0">3</div>
+                <h3 className="font-semibold text-sm text-black">Review &amp; iterate</h3>
+              </div>
+              <ul className="text-sm text-black space-y-1.5 pl-8 list-disc">
+                <li>Expand individual results to read the AI reasoning and referenced legislation.</li>
+                <li>Upload a revised version of the same document to track improvements over time.</li>
+                <li>Use the <strong>Query Document Chunks</strong> section below to inspect exactly how the document was parsed.</li>
+              </ul>
+            </div>
+
+            <Button className="w-full mt-2" onClick={() => setIsHowToOpen(false)}>
+              Got it
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto px-6 py-12">
         {/* Slogan */}
         <div className="text-center mb-10 max-w-3xl mx-auto">
@@ -546,7 +628,7 @@ export function Upload() {
                   </div>
                 ) : (
                   <div className="flex-1 py-6 flex flex-col items-center gap-4 border border-dashed border-slate-300 dark:border-slate-700 rounded-sm bg-slate-50/50 dark:bg-slate-900/20 backdrop-blur-sm">
-                    <InlineChessLoader duration={8} />
+                    <UploadChessLoader duration={8} statusText={STEP_LABELS[step]} />
                     {/* Step indicators */}
                     <div className="flex items-center gap-3">
                       {steps.map((s, i) => {
@@ -571,7 +653,6 @@ export function Upload() {
                         )
                       })}
                     </div>
-                    <p className="text-xs text-muted-foreground animate-pulse">{STEP_LABELS[step]}</p>
                   </div>
                 )}
               </div>
@@ -889,19 +970,18 @@ export function Upload() {
                 </Button>
               ) : (
                 <div className="py-6 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-700 rounded-sm bg-slate-50/50 dark:bg-slate-900/20 backdrop-blur-sm">
-                  <InlineChessLoader duration={8} />
-                  {evalJobStatus && evalJobStatus.status === "running" ? (
-                      <div className="mt-4 w-full px-8 text-center">
-                          <p className="text-xs font-medium animate-pulse mb-2">Analyzing... ({evalJobStatus.completed_count} / {evalJobStatus.total_tasks || 1} tasks)</p>
-                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
-                              <div className="bg-primary h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(5, (evalJobStatus.completed_count / (evalJobStatus.total_tasks || 1)) * 100)}%` }}></div>
-                          </div>
-                          {evalJobStatus.current_task && evalJobStatus.current_task.length > 0 && (
-                              <p className="text-xs text-muted-foreground mt-2 line-clamp-1">Checking: {evalJobStatus.current_task.join(" · ")}</p>
-                          )}
-                      </div>
-                  ) : (
-                      <p className="text-xs font-medium animate-pulse mt-2">Starting AI evaluation...</p>
+                  <UploadChessLoader
+                    duration={8}
+                    statusText={
+                      evalJobStatus && evalJobStatus.status === "running"
+                        ? `Analyzing... (${evalJobStatus.completed_count} / ${evalJobStatus.total_tasks || 1} tasks)`
+                        : "Starting AI evaluation..."
+                    }
+                  />
+                  {evalJobStatus?.current_task && evalJobStatus.current_task.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-1 px-8 text-center">
+                      Checking: {evalJobStatus.current_task.join(" · ")}
+                    </p>
                   )}
                 </div>
               )}

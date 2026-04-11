@@ -1,26 +1,32 @@
-import { useOutletContext, useParams } from "react-router-dom"
+import { useLocation, useOutletContext, useParams } from "react-router-dom"
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { getAnalysisResult, hasAnalysisResult } from "@/lib/mockData"
 import { RealResults } from "./RealResults"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService } from "@/lib/documentStorageService"
-import { ChessLoaderLong } from "@/components/ChessLoaderLong"
-import { extractNormalizedIssues, type ParseResult } from "@/lib/documentService"
+import {
+  DocumentStorageService,
+  type ProjectComplianceResult,
+  type ProjectEvaluationResult,
+} from "@/lib/documentStorageService"
+import { ChessLoader } from "@/components/ChessLoader"
+import {
+  extractNormalizedIssues,
+  type NormalizedIssue,
+  type ParseResult,
+} from "@/lib/documentService"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
-/** Convert a raw compliance result JSON into a ParseResult for RealResults. */
-function buildParseResult(
-  raw: Record<string, unknown>,
-  fallbackMarkdown: string,
-  fallbackTitle: string
-): ParseResult {
-  const markdown = typeof raw["markdown"] === "string" ? raw["markdown"] : fallbackMarkdown
-  const metrics = raw["metrics"] && typeof raw["metrics"] === "object"
-    ? raw["metrics"] as Record<string, unknown>
+function buildParseResult(raw: unknown, fallbackMarkdown: string, fallbackTitle: string): ParseResult {
+  const rawRecord = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {}
+  const markdown = typeof rawRecord["markdown"] === "string" ? rawRecord["markdown"] : fallbackMarkdown
+  const metrics = rawRecord["metrics"] && typeof rawRecord["metrics"] === "object"
+    ? rawRecord["metrics"] as Record<string, unknown>
     : undefined
-  const metadata = (raw["parsed_codes"] as Record<string, unknown> | undefined)?.["document_metadata"] as Record<string, unknown> | undefined ?? {}
+  const metadata = (rawRecord["parsed_codes"] as Record<string, unknown> | undefined)?.["document_metadata"] as Record<string, unknown> | undefined ?? {}
   const summaryText = [metadata["organization"], metadata["approval_number"]].filter(Boolean).join(" - ") || fallbackTitle
 
   return {
@@ -35,16 +41,53 @@ function buildParseResult(
       parsed_date: typeof metadata["parsed_date"] === "string" ? metadata["parsed_date"] : undefined,
       raw: metadata,
     },
-    raw,
+    raw: rawRecord,
   }
+}
+
+function buildIssuesFromProjectCompliance(compliance: ProjectComplianceResult): NormalizedIssue[] {
+  const structuredIssues = extractNormalizedIssues(compliance)
+  const results: ProjectEvaluationResult[] =
+    compliance.legislations?.flatMap((group) => group.results) ?? compliance.results ?? []
+  const legacyIssues: NormalizedIssue[] = []
+
+  for (const result of results) {
+    for (const section of result.incorrect_sections ?? []) {
+      if (!section.Quote) continue
+      legacyIssues.push({
+        id: `project-${result.legislation_id || result.legislation_name || "issue"}-${legacyIssues.length}`,
+        submission_excerpt: section.Quote,
+        explanation: section.Comment || result.explanation,
+        main_code: Array.isArray(result.task) ? result.task.join(" / ") : undefined,
+        legislation_source: result.legislation_name || undefined,
+        severity: "error",
+      })
+    }
+  }
+
+  const seen = new Set<string>()
+  return [...structuredIssues, ...legacyIssues].filter((issue) => {
+    const key = [
+      issue.id,
+      issue.submission_excerpt,
+      issue.explanation,
+      issue.legislation_source,
+    ].join("|")
+
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 export function DocumentView() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
   const { user } = useUser()
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
-  const { organizationId } = useOutletContext<DashboardOutletContext>()
+  const { organizationId, selectedProjectId } = useOutletContext<DashboardOutletContext>()
+  const projectId = (location.state as { projectId?: string } | null)?.projectId ?? selectedProjectId
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -68,30 +111,21 @@ export function DocumentView() {
       }
 
       try {
-        const [response, evaluationStatus] = await Promise.all([
+        const [response, evaluationStatus, projectComplianceResponse] = await Promise.all([
           storageService.getDocument(organizationId, id),
           storageService.getEvaluationStatus(organizationId, id).catch(() => null),
+          projectId
+            ? storageService.getProjectCompliance(organizationId, projectId).catch(() => null)
+            : Promise.resolve(null),
         ])
 
         const savedComplianceResult = response.version?.compliance_result
         const statusComplianceResult = evaluationStatus?.results?.length ? evaluationStatus : null
         const complianceResult = savedComplianceResult || statusComplianceResult
         const filename = (response.document.title || id) + ".pdf"
-
-        if (complianceResult) {
-          setRealData({
-            parseResult: buildParseResult(
-              complianceResult as Record<string, unknown>,
-              response.content_md,
-              response.document.title || ""
-            ),
-            filename,
-            document_id: id,
-            organization_id: organizationId,
-          })
-        } else {
-          setRealData({
-            parseResult: {
+        const parseResult = complianceResult
+          ? buildParseResult(complianceResult, response.content_md, response.document.title || "")
+          : {
               ok: true,
               markdown: response.content_md,
               issues: [],
@@ -100,12 +134,21 @@ export function DocumentView() {
                 organization: response.document.title || undefined,
                 raw: {},
               },
-            },
-            filename,
-            document_id: id,
-            organization_id: organizationId,
-          })
+            }
+
+        if (projectComplianceResponse?.compliance_result) {
+          const projectIssues = buildIssuesFromProjectCompliance(projectComplianceResponse.compliance_result)
+          if (projectIssues.length > 0) {
+            parseResult.issues = [...projectIssues, ...parseResult.issues]
+          }
         }
+
+        setRealData({
+          parseResult,
+          filename,
+          document_id: id,
+          organization_id: organizationId,
+        })
       } catch (err: unknown) {
         console.error("Error fetching document:", err)
         setError("Document not found.")
@@ -115,10 +158,10 @@ export function DocumentView() {
     }
 
     void fetchDoc()
-  }, [id, user, organizationId, storageService])
+  }, [id, user, organizationId, projectId, storageService])
 
   if (isLoading) {
-    return <div className="h-screen flex items-center justify-center"><ChessLoaderLong /></div>
+    return <div className="h-screen flex items-center justify-center"><ChessLoader duration={10} /></div>
   }
 
   if (error) {

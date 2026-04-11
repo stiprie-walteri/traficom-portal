@@ -93,8 +93,75 @@ export function ChessLoader({ duration = 3 }: { duration?: number }) {
   )
 }
 
-export function ChessLoaderLong() {
-  return <ChessLoader duration={10} />
+
+export function UploadChessLoader({ duration = 8, statusText = "" }: { duration?: number; statusText?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-6 py-4">
+      <div className="chess-board-upload">
+        {Array.from({ length: 64 }, (_, index) => {
+          const row = Math.floor(index / 8)
+          const col = index % 8
+          const isBlack = (row + col) % 2 === 0
+
+          return (
+            <div
+              key={index}
+              className={`chess-square-upload ${isBlack ? 'chess-square-upload-black' : 'chess-square-upload-white'}`}
+              style={{ animationDelay: `${index * 0.02}s` }}
+            />
+          )
+        })}
+      </div>
+
+      <div className="w-64 flex flex-col items-center gap-2">
+        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div
+            className="h-full bg-black rounded-full"
+            style={{ animation: `progressBarUpload ${duration}s linear forwards` }}
+          />
+        </div>
+        {statusText && <p className="text-sm text-gray-600 animate-pulse">{statusText}</p>}
+      </div>
+
+      <style>{`
+        .chess-board-upload {
+          display: grid;
+          grid-template-columns: repeat(8, 30px);
+          grid-template-rows: repeat(8, 30px);
+          gap: 2px;
+        }
+
+        .chess-square-upload {
+          width: 30px;
+          height: 30px;
+          animation: chessAnimationUpload 3s ease-in-out infinite;
+          opacity: 0;
+        }
+
+        .chess-square-upload-black {
+          background: black;
+        }
+
+        .chess-square-upload-white {
+          background: white;
+          border: 2px solid black;
+        }
+
+        @keyframes chessAnimationUpload {
+          0% { opacity: 0; transform: scale(0) rotate(0deg); }
+          20% { opacity: 1; transform: scale(1) rotate(180deg); }
+          63% { opacity: 1; transform: scale(1) rotate(180deg); }
+          83% { opacity: 0; transform: scale(0) rotate(360deg); }
+          100% { opacity: 0; transform: scale(0) rotate(360deg); }
+        }
+
+        @keyframes progressBarUpload {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+      `}</style>
+    </div>
+  )
 }
 
 export function InlineChessLoader({ duration = 3 }: { duration?: number }) {

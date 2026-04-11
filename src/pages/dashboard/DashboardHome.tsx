@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { Link, useNavigate, useOutletContext } from "react-router-dom"
 import { ArrowRight, FolderPlus, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ChessLoaderLong } from "@/components/ChessLoaderLong"
+import { ChessLoader } from "@/components/ChessLoader"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
 export function DashboardHome() {
@@ -21,7 +21,7 @@ export function DashboardHome() {
   }, [isWorkspaceLoading, navigate, projects])
 
   if (isWorkspaceLoading) {
-    return <div className="flex h-screen items-center justify-center"><ChessLoaderLong /></div>
+    return <div className="flex h-screen items-center justify-center"><ChessLoader duration={10} /></div>
   }
 
   if (projects.length > 0) {

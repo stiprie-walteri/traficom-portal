@@ -20,26 +20,11 @@ import {
   getIssueSuggestedInsertText,
   getIssueTitle,
 } from "@/lib/documentService"
-import { ChessLoaderLong } from "@/components/ChessLoaderLong"
-import { ProjectProcessLoader } from "@/components/ProjectProcessLoader"
+import { ChessLoader } from "@/components/ChessLoader"
+import { UploadChessLoader } from "@/components/ChessLoader"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
-import { FileWarning, Pencil, Sparkles, X } from "lucide-react"
+import { FileWarning, Pencil, Sparkles, X, CheckCircle2 } from "lucide-react"
 
-function formatProjectEta(secondsRemaining?: number | null, completionAt?: string | null) {
-  if (typeof secondsRemaining === "number" && secondsRemaining > 0) {
-    const minutes = Math.ceil(secondsRemaining / 60)
-    return minutes <= 1 ? "About 1 min left" : `About ${minutes} min left`
-  }
-
-  if (completionAt) {
-    const date = new Date(completionAt)
-    if (!Number.isNaN(date.getTime())) {
-      return `ETA ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-    }
-  }
-
-  return null
-}
 
 function getShortProjectStatus(statusMessage?: string | null, currentTask?: string[] | null) {
   const fromMessage = statusMessage?.replace(/^Running\s+/i, "").trim()
@@ -56,26 +41,53 @@ type FindingRow = {
   suggestedText: string
   fixLocation: string | null
   missingSections: string[]
-  incorrectSectionsCount: number
+  incorrectSections: string[]
+  isCorrect: boolean
   correctnessScore?: number
 }
 
+function uniqueItems(items: Array<string | undefined | null>) {
+  return Array.from(new Set(items.map((item) => item?.trim()).filter((item): item is string => Boolean(item))))
+}
+
+function isTaskCorrect(result: ProjectEvaluationResult) {
+  if (typeof result.is_correct === "boolean") {
+    return result.is_correct
+  }
+
+  const missingSections = uniqueItems(result.missing_sections || [])
+  const incorrectSections = uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote))
+
+  return result.exists !== false && missingSections.length === 0 && incorrectSections.length === 0
+}
+
+function getProjectResults(complianceResult: ProjectComplianceResult | null): ProjectEvaluationResult[] {
+  return complianceResult?.legislations?.flatMap((group) => group.results) || complianceResult?.results || []
+}
+
 function summarizeProjectCheck(documents: StoredDocument[], complianceResult: ProjectComplianceResult | null) {
-  const results = complianceResult?.legislations.flatMap((group) => group.results) || complianceResult?.results || []
+  const results = getProjectResults(complianceResult)
 
   let findings = 0
   let missingSections = 0
+  let correctSections = 0
   let correctnessTotal = 0
   let scoredItems = 0
+  const allSections = results.length
 
   for (const item of results) {
     const issueCount = item.issues?.length || 0
-    if (issueCount > 0) {
-      findings += issueCount
-    } else if (item.exists === false) {
-      findings += 1
+    const missingForTask = uniqueItems(item.missing_sections || [])
+    const taskIsCorrect = isTaskCorrect(item) && issueCount === 0
+
+    if (taskIsCorrect) {
+      correctSections += 1
+    } else {
+      findings += issueCount > 0 ? issueCount : 1
     }
-    missingSections += item.missing_sections?.length || 0
+
+    missingSections += missingForTask.length
+
     if (typeof item.correctness_score === "number") {
       correctnessTotal += item.correctness_score
       scoredItems += 1
@@ -86,47 +98,55 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
     totalDocuments: documents.length,
     completedDocuments: complianceResult ? documents.length : 0,
     findings,
+    correctSections,
     missingSections,
-    averageCorrectness: scoredItems > 0 ? Math.round(correctnessTotal / scoredItems) : 0,
+    allSections,
+    averageCorrectScore: scoredItems > 0
+      ? Math.round(correctnessTotal / scoredItems)
+      : allSections > 0
+        ? Math.round((correctSections / allSections) * 100)
+        : 0,
   }
 }
 
 function buildFindingRows(results: ProjectEvaluationResult[]): FindingRow[] {
-  return results.flatMap<FindingRow>((result) => {
-    const taskLabel = Array.isArray(result.task) ? result.task.join(" / ") : "Finding"
-    const base = {
-      legislationName: result.legislation_name || "Legislation",
-      taskLabel,
-      missingSections: result.missing_sections || [],
-      incorrectSectionsCount: result.incorrect_sections?.length || 0,
-      correctnessScore: result.correctness_score,
-    }
-    const issues = extractNormalizedIssues(result)
+  return results
+    .flatMap<FindingRow>((result) => {
+      const taskLabel = Array.isArray(result.task) ? result.task.join(" / ") : "Finding"
+      const missingSections = uniqueItems(result.missing_sections || [])
+      const incorrectSections = uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote))
+      const base = {
+        legislationName: result.legislation_name || "Legislation",
+        taskLabel,
+        missingSections,
+        incorrectSections,
+        correctnessScore: result.correctness_score,
+      }
+      const issues = extractNormalizedIssues(result)
 
-    if (issues.length > 0) {
-      return issues.map((issue) => ({
-        ...base,
-        title: getIssueTitle(issue),
-        explanation: getIssueProblem(issue),
-        solution: getIssueSolution(issue),
-        suggestedText: getIssueSuggestedInsertText(issue),
-        fixLocation: getIssueFixLocation(issue),
-      }))
-    }
+      if (issues.length > 0) {
+        return issues.map((issue) => ({
+          ...base,
+          title: getIssueTitle(issue),
+          explanation: getIssueProblem(issue),
+          solution: getIssueSolution(issue),
+          suggestedText: getIssueSuggestedInsertText(issue),
+          fixLocation: getIssueFixLocation(issue),
+          isCorrect: false,
+        }))
+      }
 
-    if (result.exists === false) {
       return [{
         ...base,
         title: taskLabel,
-        explanation: result.explanation,
+        explanation: result.explanation || (isTaskCorrect(result) ? "Task passed all checks." : ""),
         solution: "",
         suggestedText: "",
         fixLocation: null,
+        isCorrect: isTaskCorrect(result),
       }]
-    }
-
-    return []
-  })
+    })
+    .sort((left, right) => Number(left.isCorrect) - Number(right.isCorrect))
 }
 
 export function ProjectView() {
@@ -208,7 +228,7 @@ export function ProjectView() {
   const effectiveCompliance = detailedProjectStatus?.compliance_result || projectCompliance
   const effectiveResults = detailedProjectStatus?.results?.length
     ? detailedProjectStatus.results
-    : effectiveCompliance?.legislations.flatMap((group: { results: ProjectEvaluationResult[] }) => group.results) || effectiveCompliance?.results || []
+    : effectiveCompliance?.legislations?.flatMap((group: { results: ProjectEvaluationResult[] }) => group.results) || effectiveCompliance?.results || []
 
   const summary = summarizeProjectCheck(documents, effectiveCompliance)
   const findingRows = buildFindingRows(effectiveResults)
@@ -260,16 +280,16 @@ export function ProjectView() {
         project?.legislation_template_ids || undefined
       )
 
-        const initialRunningStatus = {
-          status: "running" as const,
-          completed_count: 0,
-          total_tasks: 0,
-          current_task: ["Preparing project analysis"],
-          status_message: "Preparing project analysis",
-          progress_percent: 0,
-          estimated_seconds_remaining: null,
-          estimated_completion_at: null,
-        }
+      const initialRunningStatus = {
+        status: "running" as const,
+        completed_count: 0,
+        total_tasks: 0,
+        current_task: ["Preparing project analysis"],
+        status_message: "Preparing project analysis",
+        progress_percent: 0,
+        estimated_seconds_remaining: null,
+        estimated_completion_at: null,
+      }
       setBlockingEvaluationStatus(initialRunningStatus)
 
       setProjectEvaluationStatus(id, {
@@ -349,7 +369,7 @@ export function ProjectView() {
   }
 
   if (isLoading) {
-    return <div className="flex h-screen items-center justify-center"><ChessLoaderLong /></div>
+    return <div className="flex h-screen items-center justify-center"><ChessLoader duration={10} /></div>
   }
 
   if (!project) {
@@ -363,7 +383,7 @@ export function ProjectView() {
   return (
     <div className="relative container mx-auto max-w-6xl px-6 py-10">
       {isEditOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
@@ -400,9 +420,8 @@ export function ProjectView() {
                     return (
                       <label
                         key={template.id}
-                        className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors ${
-                          checked ? "border-slate-400 bg-white" : "border-slate-200 bg-white/80 hover:border-slate-300"
-                        }`}
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors ${checked ? "border-slate-400 bg-white" : "border-slate-200 bg-white/80 hover:border-slate-300"
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -434,226 +453,265 @@ export function ProjectView() {
       )}
 
       <div className={isProjectRunning ? "pointer-events-none select-none" : undefined}>
-      <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="space-y-6 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Project</p>
-              <h1 className="mt-2 text-3xl font-semibold text-foreground">{project.name}</h1>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                Project-level summary, legislation scope, and AI-check status across all documents.
-              </p>
-            </div>
-            <Button onClick={() => setIsEditOpen(true)} disabled={isProjectRunning}>
-              <Pencil className="h-4 w-4" />
-              Edit Project
-            </Button>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+          <section className="space-y-6 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-foreground">Rerun analysis for the whole project</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Use this when multiple documents together describe the same topic and need to be rechecked as one project set.
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Project</p>
+                <h1 className="mt-2 text-3xl font-semibold text-foreground">{project.name}</h1>
+                <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                  Project-level summary, legislation scope, and AI-check status across all documents.
                 </p>
               </div>
-              <Button
-                size="lg"
-                className="min-w-[220px]"
-                onClick={() => void handleRerunProject()}
-                disabled={isProjectRunning || documents.length === 0}
-              >
-                <Sparkles className="h-4 w-4" />
-                {isProjectRunning ? "Analysis Running..." : "Rerun Full Project Analysis"}
+              <Button onClick={() => setIsEditOpen(true)} disabled={isProjectRunning}>
+                <Pencil className="h-4 w-4" />
+                Edit Project
               </Button>
             </div>
-          </div>
 
-          {project.description && (
-            <p className="text-sm text-slate-700">{project.description}</p>
-          )}
-
-          <div>
-            <p className="mb-2 text-sm font-medium">Legislation templates</p>
-            <div className="flex flex-wrap gap-2">
-              {activeTemplateNames.length > 0 ? activeTemplateNames.map((item) => (
-                <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
-                  {item}
-                </span>
-              )) : (
-                <span className="text-sm text-muted-foreground">No legislation templates configured.</span>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Check</p>
-            <h2 className="mt-2 text-2xl font-semibold">Project Summary</h2>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Average score</p>
-              <p className="mt-2 text-3xl font-semibold text-foreground">{summary.averageCorrectness}%</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Documents checked</p>
-              <p className="mt-2 text-3xl font-semibold text-foreground">{summary.completedDocuments}/{summary.totalDocuments}</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Open findings</p>
-              <p className="mt-2 text-3xl font-semibold text-foreground">{summary.findings}</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Missing sections</p>
-              <p className="mt-2 text-3xl font-semibold text-foreground">{summary.missingSections}</p>
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {isProjectRunning
-              ? "Project-wide analysis is in progress."
-              : "No active AI checks are running for this project."}
-          </p>
-        </section>
-      </div>
-
-      <section className="mt-16 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Findings</p>
-            <h2 className="mt-2 text-2xl font-semibold">All project findings</h2>
-          </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
-            {findingRows.length} total
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {findingRows.map((finding, index) => (
-            <div
-              key={`${finding.legislationName}-${index}`}
-              className="rounded-2xl border border-slate-200 bg-white p-4"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <FileWarning className="h-4 w-4 text-amber-600" />
-                    <p className="truncate text-sm font-semibold">{finding.title}</p>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{finding.taskLabel}</p>
-                  <p className="mt-2 text-sm text-slate-700">{finding.explanation}</p>
-                  {(finding.solution || finding.suggestedText) && (
-                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
-                      {finding.solution && (
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-950">{finding.solution}</p>
-                      )}
-                      {finding.suggestedText && finding.suggestedText !== finding.solution && (
-                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-2 text-xs text-emerald-950">
-                          {finding.suggestedText}
-                        </pre>
-                      )}
-                      {finding.fixLocation && (
-                        <p className="mt-2 text-xs text-emerald-800">{finding.fixLocation}</p>
-                      )}
-                    </div>
-                  )}
-                  {finding.missingSections.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {finding.missingSections.map((section) => (
-                        <span key={section} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
-                          {section}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="text-right">
-                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Legislation</p>
-                  <p className="mt-1 max-w-[220px] truncate text-sm font-semibold">{finding.legislationName}</p>
-                  {typeof finding.correctnessScore === "number" && (
-                    <p className="mt-2 text-xs text-muted-foreground">Score: {finding.correctnessScore}</p>
-                  )}
-                  {finding.incorrectSectionsCount > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">Incorrect sections: {finding.incorrectSectionsCount}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {findingRows.length === 0 && (
-            <p className="text-sm text-muted-foreground">No findings yet for this project.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="mt-8 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Documents</p>
-            <h2 className="mt-2 text-2xl font-semibold">Project documents</h2>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {documents.map((doc) => {
-            const documentMeta = effectiveCompliance?.documents.find((item: { document_id: string }) => item.document_id === doc.document_id)
-
-            return (
-              <Link
-                key={doc.document_id}
-                to={`/dashboard/document/${doc.document_id}`}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-colors hover:border-slate-300"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{doc.title || "Untitled"}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(doc.created_at).toLocaleDateString()}{isProjectRunning ? " - analyzing" : ""}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Rerun analysis for the whole project</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Use this when multiple documents together describe the same topic and need to be rechecked as one project set.
                   </p>
                 </div>
-                <div className="flex items-center gap-3 text-right">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Version</p>
-                    <p className="text-sm font-semibold">{documentMeta?.version_no ?? doc.current_version?.version_no ?? "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Status</p>
-                    <p className="text-sm font-semibold">
-                      {isProjectRunning ? "Running" : effectiveCompliance ? "Ready" : "Not checked"}
+                <Button
+                  size="lg"
+                  className="min-w-[220px]"
+                  onClick={() => void handleRerunProject()}
+                  disabled={isProjectRunning || documents.length === 0}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {isProjectRunning ? "Analysis Running..." : "Rerun Full Project Analysis"}
+                </Button>
+              </div>
+            </div>
+
+            {project.description && (
+              <p className="text-sm text-slate-700">{project.description}</p>
+            )}
+
+            <div>
+              <p className="mb-2 text-sm font-medium">Legislation templates</p>
+              <div className="flex flex-wrap gap-2">
+                {activeTemplateNames.length > 0 ? activeTemplateNames.map((item) => (
+                  <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
+                    {item}
+                  </span>
+                )) : (
+                  <span className="text-sm text-muted-foreground">No legislation templates configured.</span>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Check</p>
+              <h2 className="mt-2 text-2xl font-semibold">Project Summary</h2>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Average score</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.averageCorrectScore}%</p>
+                <p className="mt-1 text-xs text-muted-foreground">Correct tasks / all tasks</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Documents checked</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.completedDocuments}/{summary.totalDocuments}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Correct sections</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.correctSections}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Tasks with no missing or incorrect sections</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Open findings</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.findings}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Missing sections</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.missingSections}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">All sections</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{summary.allSections}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Each task counts as one section</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {isProjectRunning
+                ? "Project-wide analysis is in progress."
+                : "No active AI checks are running for this project."}
+            </p>
+          </section>
+        </div>
+
+        <section className="mt-16 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Checks</p>
+              <h2 className="mt-2 text-2xl font-semibold">All project checks</h2>
+            </div>
+            <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
+              {findingRows.length} total
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {findingRows.map((finding, index) => (
+              <div
+                key={`${finding.legislationName}-${index}`}
+                className={`rounded-2xl border p-4 ${
+                  finding.isCorrect ? "border-green-200 bg-green-50/30" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {finding.isCorrect ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <FileWarning className="h-4 w-4 text-amber-600" />
+                      )}
+                      <p className={`truncate text-sm font-semibold ${finding.isCorrect ? "text-green-800" : ""}`}>
+                        {finding.title}
+                      </p>
+                      {finding.isCorrect && (
+                        <span className="ml-2 whitespace-nowrap rounded-full border border-green-300 bg-green-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-green-700">
+                          Correct section
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{finding.taskLabel}</p>
+                    <p className={`mt-2 text-sm ${finding.isCorrect ? "text-green-700/80" : "text-slate-700"}`}>
+                      {finding.explanation || (finding.isCorrect ? "Task passed all checks." : "")}
                     </p>
+                    {(finding.solution || finding.suggestedText) && (
+                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
+                        {finding.solution && (
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-950">{finding.solution}</p>
+                        )}
+                        {finding.suggestedText && finding.suggestedText !== finding.solution && (
+                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-2 text-xs text-emerald-950">
+                            {finding.suggestedText}
+                          </pre>
+                        )}
+                        {finding.fixLocation && (
+                          <p className="mt-2 text-xs text-emerald-800">{finding.fixLocation}</p>
+                        )}
+                      </div>
+                    )}
+                    {finding.isCorrect && (
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-green-700">
+                        This task is correct.
+                      </p>
+                    )}
+                    {finding.missingSections.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-700">Missing sections</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {finding.missingSections.map((section) => (
+                            <span key={section} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
+                              {section}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {finding.incorrectSections.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Incorrect sections</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {finding.incorrectSections.map((section) => (
+                            <span key={section} className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
+                              {section}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Legislation</p>
+                    <p className="mt-1 max-w-[220px] truncate text-sm font-semibold">{finding.legislationName}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">Status: {finding.isCorrect ? "Correct" : "Needs review"}</p>
+                    {typeof finding.correctnessScore === "number" && (
+                      <p className="mt-1 text-xs text-muted-foreground">Score: {finding.correctnessScore}</p>
+                    )}
                   </div>
                 </div>
-              </Link>
-            )
-          })}
+              </div>
+            ))}
 
-          {documents.length === 0 && (
-            <p className="text-sm text-muted-foreground">No documents in this project yet.</p>
-          )}
-        </div>
-      </section>
+            {findingRows.length === 0 && (
+              <p className="text-sm text-muted-foreground">No findings yet for this project.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Documents</p>
+              <h2 className="mt-2 text-2xl font-semibold">Project documents</h2>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {documents.map((doc) => {
+              const documentMeta = effectiveCompliance?.documents?.find((item: { document_id: string }) => item.document_id === doc.document_id)
+
+              return (
+                <Link
+                  key={doc.document_id}
+                  to={`/dashboard/document/${doc.document_id}`}
+                  state={{ projectId: id }}
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-colors hover:border-slate-300"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{doc.title || "Untitled"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(doc.created_at).toLocaleDateString()}{isProjectRunning ? " - analyzing" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-right">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Version</p>
+                      <p className="text-sm font-semibold">{documentMeta?.version_no ?? doc.current_version?.version_no ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Status</p>
+                      <p className="text-sm font-semibold">
+                        {isProjectRunning ? "Running" : effectiveCompliance ? "Ready" : "Not checked"}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+
+            {documents.length === 0 && (
+              <p className="text-sm text-muted-foreground">No documents in this project yet.</p>
+            )}
+          </div>
+        </section>
       </div>
 
       {isProjectRunning && progressStatus && (
         <div className="absolute inset-0 z-20 flex items-start justify-center px-6 py-10">
           <div className="w-full max-w-3xl">
-            <ProjectProcessLoader
-              title="Analyzing project"
-              description="The full project workflow is still running. Project actions stay disabled until the evaluation finishes."
-              completedCount={progressStatus.completed_count}
-              totalTasks={progressStatus.total_tasks || undefined}
-              progressPercent={progressStatus.progress_percent}
-              statusMessage={getShortProjectStatus(progressStatus.status_message, progressStatus.current_task)}
-              etaLabel={formatProjectEta(
-                progressStatus.estimated_seconds_remaining,
-                progressStatus.estimated_completion_at
-              )}
-              currentTask={progressStatus.current_task?.join(" / ") || "Preparing project analysis..."}
-              fullScreen={false}
-            />
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-10 shadow-lg backdrop-blur-md">
+              <h2 className="text-xl font-semibold text-center mb-2">Analyzing project</h2>
+              <p className="text-center text-muted-foreground text-sm mb-8">The full project workflow is still running. Project actions stay disabled until the evaluation finishes.</p>
+              <UploadChessLoader
+                duration={8}
+                statusText={getShortProjectStatus(progressStatus.status_message, progressStatus.current_task) || "Preparing project analysis..."}
+              />
+            </div>
           </div>
         </div>
       )}

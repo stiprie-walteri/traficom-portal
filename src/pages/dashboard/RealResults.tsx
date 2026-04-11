@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
 import orgSubmission from "@/assets/org_submission.md?raw"
-import { ChessLoaderLong } from "@/components/ChessLoaderLong"
+import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, {
   ParseResult,
@@ -43,6 +43,8 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
   const [isLoading, setIsLoading] = useState(true)
   const [, setApiError] = useState<string | null>(null)
   const [issues, setIssues] = useState<NormalizedIssue[]>([])
+  const [unmatchedIssues, setUnmatchedIssues] = useState<NormalizedIssue[]>([])
+  const [showUnmatched, setShowUnmatched] = useState(false)
   const [markdown, setMarkdown] = useState<string | null>(null)
   const [, setLastResponse] = useState<ParseResult | null>(null)
   // Always send fake file payload for testing
@@ -111,6 +113,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       if (!passedResult.ok) {
         setApiError(passedResult.error ?? 'Failed to parse document')
         setIssues([])
+        setUnmatchedIssues([])
         setMarkdown(orgSubmission)
       } else {
         setMarkdown(passedResult.markdown || orgSubmission)
@@ -167,6 +170,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       if (!res.ok) {
         setApiError(res.error ?? 'Failed to parse document')
         setIssues([])
+        setUnmatchedIssues([])
         setMarkdown(orgSubmission)
       } else {
         setMarkdown(res.markdown || orgSubmission)
@@ -249,7 +253,8 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       setMarkdown(response.content_md)
       // Reset state for new content
       hasProcessed.current = false
-      setIssues([]) // Versions from storage might not have issues yet
+      setIssues([])
+      setUnmatchedIssues([])
 
       setDocumentSummary((prev: any) => ({
         ...prev,
@@ -487,13 +492,9 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       }
     })
 
-    // Reorder issues: matched at start and end, unmatched in middle
-    setIssues(prev => {
-      const matchedIssues = prev.filter(i => matchedIds.includes(i.id))
-      const unmatchedIssues = prev.filter(i => unmatchedIds.includes(i.id))
-      const half = Math.floor(matchedIssues.length / 2)
-      return [...matchedIssues.slice(0, half), ...unmatchedIssues, ...matchedIssues.slice(half)]
-    })
+    // Keep only matched issues for inline highlights; move unmatched to the separate findings section
+    setIssues(prev => prev.filter(i => matchedIds.includes(i.id)))
+    setUnmatchedIssues(prev => [...prev.filter(i => !unmatchedIds.includes(i.id)), ...issues.filter(i => unmatchedIds.includes(i.id))])
   }  // Event delegation handler - use click but with optimized spans
   const handleArticleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
@@ -520,7 +521,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       {/* Page content shown only after loading */}
       {isLoading ? (
         <div className="bg-white w-full h-full flex items-center justify-center">
-          <ChessLoaderLong />
+          <ChessLoader duration={10} />
         </div>
       ) : (
         <>
@@ -796,6 +797,35 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 </>
               )}
             </div>
+
+            {unmatchedIssues.length > 0 && (
+              <div className="mb-8 rounded-lg border border-amber-200 bg-amber-50">
+                <button
+                  className="flex w-full items-center justify-between px-5 py-4 text-left"
+                  onClick={(e) => { e.stopPropagation(); setShowUnmatched(p => !p) }}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  <span className="text-sm font-semibold uppercase tracking-wide text-amber-900">
+                    Additional Findings ({unmatchedIssues.length})
+                  </span>
+                  <svg
+                    className={`h-4 w-4 text-amber-700 transition-transform ${showUnmatched ? "rotate-180" : ""}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showUnmatched && (
+                  <div className="space-y-3 px-5 pb-5">
+                    {unmatchedIssues.map((issue) => (
+                      <div key={issue.id} className="border-l-2 border-amber-400 pl-3">
+                        <p className="text-sm text-amber-900">{issue.explanation}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <article
               ref={articleRef}

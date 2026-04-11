@@ -1,9 +1,10 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
-import { ChevronDown, FileText, FolderOpen, Menu, PanelLeftClose, PanelRightClose } from "lucide-react"
+import { ChevronDown, FileText, FolderOpen, Menu, PanelLeftClose, PanelRightClose, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import logoSvg from "@/assets/logo.svg"
+import { useUser } from "@clerk/clerk-react"
 
 const DEMO_PROJECT_PATH = "/demo/project/jet-support"
 const DEMO_DOCUMENT_PATH = "/demo/document/jet-support"
@@ -13,6 +14,7 @@ export function DemoLayout() {
   const navigate = useNavigate()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const { isSignedIn } = useUser()
 
   const isActivePath = (path: string) => {
     if (path === "/demo" && location.pathname === "/demo") return true
@@ -133,7 +135,24 @@ export function DemoLayout() {
               )}
             </div>
           </nav>
+
+          {isSignedIn && (
+            <>
+              <div className="mx-3 h-px bg-border" />
+              <div className="p-4">
+                <Button
+                  className={cn("w-full transition-all", isCollapsed ? "px-0 justify-center" : "gap-2")}
+                  onClick={() => navigate("/dashboard")}
+                  title="Go to Your Projects"
+                >
+                  <LayoutDashboard className="h-4 w-4 flex-shrink-0" />
+                  {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Your Projects</span>}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
+
       </aside>
 
       <main
