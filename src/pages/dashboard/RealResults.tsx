@@ -24,6 +24,33 @@ import { useAppAlert } from "@/hooks/useAppAlert"
 
 // warnings and highlights are provided by the backend `issues` list
 
+function getIssueFixParts(issue: NormalizedIssue) {
+  const solution = getIssueSolution(issue)
+  const suggestedText = getIssueSuggestedInsertText(issue)
+  const fixLocation = getIssueFixLocation(issue)
+  const showSuggestedText = Boolean(suggestedText && suggestedText !== solution)
+
+  return {
+    solution,
+    suggestedText,
+    fixLocation,
+    showSuggestedText,
+    hasFix: Boolean(solution || showSuggestedText || fixLocation),
+  }
+}
+
+function getIssueTooltip(issue: NormalizedIssue) {
+  const problem = getIssueProblem(issue)
+  const { solution, suggestedText, fixLocation } = getIssueFixParts(issue)
+  const fixText = [
+    solution,
+    suggestedText && suggestedText !== solution ? suggestedText : "",
+    fixLocation || "",
+  ].filter(Boolean).join("\n\n")
+
+  return fixText ? `${problem}\n\nHow to fix:\n${fixText}` : problem
+}
+
 interface RealResultsProps {
   storedData?: {
     parseResult: ParseResult
@@ -349,7 +376,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     issues.forEach((issue) => {
       const { id } = issue
       const highlightText = issue.submission_excerpt ?? issue.current_section?.quote ?? ''
-      const warning = getIssueProblem(issue)
+      const warning = getIssueTooltip(issue)
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
       const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
       const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
@@ -571,8 +598,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
               </div>
               <div className="space-y-2">
                 {issues.map((item) => {
-                  const solution = getIssueSolution(item)
-                  const suggestedText = getIssueSuggestedInsertText(item)
+                  const { solution, suggestedText } = getIssueFixParts(item)
                   const fixText = solution || suggestedText
 
                   return (
@@ -626,7 +652,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 </button>
               </div>
               <p className="text-sm text-gray-800 mb-3 whitespace-pre-wrap">{getIssueProblem(activeIssue)}</p>
-              {(activeIssueSolution || showActiveSuggestedText) && (
+              {(activeIssueSolution || showActiveSuggestedText || activeIssueFixLocation) && (
                 <div className="mb-3 rounded border border-emerald-200 bg-emerald-50 p-3">
                   <h4 className="font-semibold text-xs text-emerald-900 mb-1">How to fix</h4>
                   {activeIssueSolution && (
@@ -817,11 +843,38 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 </button>
                 {showUnmatched && (
                   <div className="space-y-3 px-5 pb-5">
-                    {unmatchedIssues.map((issue) => (
-                      <div key={issue.id} className="border-l-2 border-amber-400 pl-3">
-                        <p className="text-sm text-amber-900">{issue.explanation}</p>
-                      </div>
-                    ))}
+                    {unmatchedIssues.map((issue) => {
+                      const {
+                        solution,
+                        suggestedText,
+                        fixLocation,
+                        showSuggestedText,
+                        hasFix,
+                      } = getIssueFixParts(issue)
+
+                      return (
+                        <div key={issue.id} className="border-l-2 border-amber-400 pl-3">
+                          <p className="text-sm font-semibold text-amber-950">{getIssueTitle(issue)}</p>
+                          <p className="mt-1 text-sm text-amber-900">{getIssueProblem(issue)}</p>
+                          {hasFix && (
+                            <div className="mt-3 rounded border border-emerald-200 bg-white/70 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
+                              {solution && (
+                                <p className="mt-1 whitespace-pre-wrap text-xs text-emerald-950">{solution}</p>
+                              )}
+                              {showSuggestedText && (
+                                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-emerald-50 p-2 text-xs text-emerald-950">
+                                  {suggestedText}
+                                </pre>
+                              )}
+                              {fixLocation && (
+                                <p className="mt-2 text-xs text-emerald-800">{fixLocation}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
