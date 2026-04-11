@@ -14,6 +14,7 @@ import { DemoProjectView } from "@/pages/demo/DemoProjectView"
 import { RealResults } from "@/pages/dashboard/RealResults"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { UnauthorizedPage } from "@/pages/UnauthorizedPage"
+import { NoOrganizationPage } from "@/pages/NoOrganizationPage"
 
 
 function App() {
@@ -44,6 +45,9 @@ function App() {
 
         {/* Unauthorized page */}
         <Route path="/unauthorized" element={<MainLayout><UnauthorizedPage /></MainLayout>} />
+
+        {/* No organization page */}
+        <Route path="/no-organization" element={<MainLayout><NoOrganizationPage /></MainLayout>} />
 
         {/* Catch all */}
         <Route path="*" element={<Navigate to="/" replace />} />
