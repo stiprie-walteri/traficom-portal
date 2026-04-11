@@ -43,6 +43,7 @@ export interface ProjectComplianceLegislationGroup {
     template_id: string;
     template_name: string;
     task_count: number;
+    correctness_score?: number;
     results: ProjectEvaluationResult[];
 }
 
@@ -52,6 +53,7 @@ export interface ProjectComplianceResult {
     documents: ProjectComplianceDocument[];
     legislation_template_ids: string[];
     legislations: ProjectComplianceLegislationGroup[];
+    correctness_score?: number;
     results: ProjectEvaluationResult[];
 }
 
@@ -123,6 +125,27 @@ export interface UploadResponse {
     version_id: string;
     version_no: number;
     content_hash: string;
+}
+
+export interface BatchUploadDocument {
+    organization_id: string;
+    project_id: string | null;
+    document_id: string;
+    version_id: string;
+    version_no: number;
+    content_hash: string;
+}
+
+export interface BatchUploadFailure {
+    filename: string;
+    error: string;
+}
+
+export interface BatchUploadResponse {
+    organization_id: string;
+    project_id: string | null;
+    documents: BatchUploadDocument[];
+    failed: BatchUploadFailure[];
 }
 
 export interface GetDocumentResponse {
@@ -239,6 +262,13 @@ export interface UploadDocumentParams {
     file: File;
     documentId?: string;
     title?: string;
+    message?: string;
+}
+
+export interface UploadBatchDocumentsParams {
+    organizationId?: string;
+    projectId?: string;
+    files: File[];
     message?: string;
 }
 
@@ -406,6 +436,33 @@ export class DocumentStorageService {
 
         const response = await this.apiClient.post<UploadResponse>(
             "/documents/upload",
+            formData,
+            {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            }
+        );
+        return response.data;
+    }
+
+    /**
+     * Uploads multiple files to a project in a single request.
+     * POST /api/documents/upload-batch
+     */
+    async uploadBatchDocuments(params: UploadBatchDocumentsParams): Promise<BatchUploadResponse> {
+        const formData = new FormData();
+
+        for (const file of params.files) {
+            formData.append("files", file);
+        }
+
+        if (params.organizationId) formData.append("organization_id", params.organizationId);
+        if (params.projectId) formData.append("project_id", params.projectId);
+        if (params.message) formData.append("message", params.message);
+
+        const response = await this.apiClient.post<BatchUploadResponse>(
+            "/documents/upload-batch",
             formData,
             {
                 headers: {
