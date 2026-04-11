@@ -34,6 +34,9 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
   const [isLoading, setIsLoading] = useState(true)
   const [, setApiError] = useState<string | null>(null)
   const [issues, setIssues] = useState<NormalizedIssue[]>([])
+  // rawIssues is the source of truth from load() — processHighlights reads from this so it
+  // can re-run safely without losing unmatched entries after setIssues replaces the display list.
+  const [rawIssues, setRawIssues] = useState<NormalizedIssue[]>([])
   const [unmatchedIssues, setUnmatchedIssues] = useState<NormalizedIssue[]>([])
   const [showUnmatched, setShowUnmatched] = useState(false)
   const [markdown, setMarkdown] = useState<string | null>(null)
@@ -54,7 +57,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     sectionsNotInLegislation: number;
     mainNotFoundList: string[];
   }>({ mainFound: 0, mainNotFound: 0, subsectionsFound: 0, subsectionsNotFound: 0, sectionsNotInLegislation: 0, mainNotFoundList: [] })
-  const hasProcessed = useRef(false)
+  const articleElRef = useRef<HTMLElement | null>(null)
   const { toast } = useAppAlert()
 
   // Versions state
@@ -103,11 +106,13 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
 
       if (!passedResult.ok) {
         setApiError(passedResult.error ?? 'Failed to parse document')
+        setRawIssues([])
         setIssues([])
         setUnmatchedIssues([])
         setMarkdown(orgSubmission)
       } else {
         setMarkdown(passedResult.markdown || orgSubmission)
+        setRawIssues(passedResult.issues || [])
         setIssues(passedResult.issues || [])
         setDocumentSummary({
           name: passedResult.summary?.organization ? `${passedResult.summary.organization} MAINTENANCE ORGANISATION EXPOSITION` : undefined,
@@ -160,11 +165,13 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
 
       if (!res.ok) {
         setApiError(res.error ?? 'Failed to parse document')
+        setRawIssues([])
         setIssues([])
         setUnmatchedIssues([])
         setMarkdown(orgSubmission)
       } else {
         setMarkdown(res.markdown || orgSubmission)
+        setRawIssues(res.issues || [])
         setIssues(res.issues || [])
         setDocumentSummary({
           name: res.summary?.organization ? `${res.summary.organization} MAINTENANCE ORGANISATION EXPOSITION` : undefined,
@@ -243,7 +250,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
 
       setMarkdown(response.content_md)
       // Reset state for new content
-      hasProcessed.current = false
+      setRawIssues([])
       setIssues([])
       setUnmatchedIssues([])
 
@@ -270,17 +277,40 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     void load()
   }, [load])
 
-  const articleRef = (element: HTMLElement | null) => {
-    if (!element) return
-    // Avoid re-processing highlights multiple times (prevents duplicate wrapping)
-    if (hasProcessed.current) return
+  useEffect(() => {
+    document.querySelectorAll<HTMLElement>('[data-warning-id]').forEach(el => {
+      el.style.backgroundColor = ''
+      el.style.zIndex = ''
+    })
+    if (activewarning) {
+      document.querySelectorAll<HTMLElement>(`[data-warning-id="${activewarning.id}"]`).forEach(el => {
+        el.style.backgroundColor = '#fbbf24' // amber-400 — visibly darker than yellow-200
+        el.style.zIndex = '1'
+        // Any nested highlight spans inside this one would paint their bg-yellow-200 on top.
+        // Make them transparent so this span's amber shows through.
+        el.querySelectorAll<HTMLElement>('[data-warning-id]').forEach(child => {
+          child.style.backgroundColor = 'transparent'
+        })
+      })
+    }
+  }, [activewarning])
 
-    // Process highlights after ReactMarkdown finishes rendering
-    setTimeout(() => {
-      hasProcessed.current = true
-      processHighlights(element)
+  // Re-run processHighlights whenever the source (rawIssues) or document (markdown) changes.
+  // Depending on rawIssues (not issues) prevents a loop: processHighlights calls setIssues,
+  // which doesn't touch rawIssues, so the effect doesn't re-fire on its own output.
+  useEffect(() => {
+    if (isLoading || !markdown || rawIssues.length === 0) return
+
+    const timer = setTimeout(() => {
+      const articleEl = articleElRef.current
+      if (articleEl) {
+        processHighlights(articleEl)
+      }
     }, 50)
-  }
+
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, markdown, rawIssues])
 
   const navigateTowarning = (direction: 'prev' | 'next') => {
     if (!activewarning) return
@@ -312,6 +342,21 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
   const processHighlights = (articleElement: HTMLElement) => {
     if (!articleElement) return
 
+    // Idempotent cleanup: unwrap any existing highlight spans from previous runs
+    // so repeated runs (e.g. after rawIssues change) don't accumulate duplicate spans.
+    articleElement.querySelectorAll<HTMLElement>('[data-warning-id]').forEach(span => {
+      const parent = span.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(span.textContent || ''), span)
+      }
+    })
+    articleElement.normalize()
+
+    // Source of truth for matching is rawIssues — processHighlights must NEVER iterate over
+    // `issues` (which it mutates via setIssues), or it would lose unmatched entries on re-runs.
+    const sourceIssues = rawIssues
+    if (sourceIssues.length === 0) return
+
     // Find and highlight the text after ReactMarkdown has rendered
     const walker = document.createTreeWalker(
       articleElement,
@@ -334,18 +379,15 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
     }
 
     // Process each issue as a warning pair
-    const matchedIds: string[] = []
+    const insertedIds: string[] = []
     const unmatchedIds: string[] = []
-    const matchPositions = new Map<string, number>()
-    issues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
+    sourceIssues.forEach(({ id, submission_excerpt: highlightText = '', explanation: warning = '', main_code }) => {
       const references = main_code ? [main_code] : []
       const normalizedCurrent = currentText.replace(/\s+/g, ' ')
       const normalizedHighlight = (highlightText || '').replace(/\s+/g, ' ')
       const normalizedIndex = normalizedHighlight ? normalizedCurrent.indexOf(normalizedHighlight) : -1
 
       if (normalizedIndex !== -1) {
-        matchedIds.push(id)
-        matchPositions.set(id, normalizedIndex)
         // Map back to original text position for start
         let normalizedPos = 0
         let originalStartIndex = 0
@@ -403,6 +445,8 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
         span.dataset.warning = warning ?? ''
         span.dataset.references = JSON.stringify(references)
 
+        let inserted = false
+
         if (affectedNodes.length === 1) {
           // Single node case
           const { node, start } = affectedNodes[0]
@@ -421,6 +465,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
             parent.insertBefore(span, node)
             if (after) parent.insertBefore(document.createTextNode(after), node)
             parent.removeChild(node)
+            inserted = true
           }
         } else if (affectedNodes.length > 1) {
           // Multiple nodes case - need to wrap across nodes
@@ -478,19 +523,37 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
             affectedNodes.forEach(({ node }) => {
               node.parentNode?.removeChild(node)
             })
+            inserted = true
           }
+        }
+
+        if (inserted) {
+          insertedIds.push(id)
+        } else {
+          // Matched in text but DOM insertion failed (e.g. text node already consumed by a prior highlight)
+          unmatchedIds.push(id)
         }
       } else {
         unmatchedIds.push(id)
       }
     })
 
-    // Keep only matched issues, sorted by their position in the document text (top to bottom)
-    const sortedMatchedIssues = issues
-      .filter(i => matchedIds.includes(i.id))
-      .sort((a, b) => (matchPositions.get(a.id) ?? 0) - (matchPositions.get(b.id) ?? 0))
-    setIssues(sortedMatchedIssues)
-    setUnmatchedIssues(prev => [...prev.filter(i => !unmatchedIds.includes(i.id)), ...issues.filter(i => unmatchedIds.includes(i.id))])
+    // Sort by actual DOM position (top-to-bottom in the rendered document).
+    // compareDocumentPosition handles nested, sibling, and separated spans correctly,
+    // whereas indexOf-based sorting gives the same key to duplicate excerpts.
+    const sortedInsertedIssues = sourceIssues
+      .filter(i => insertedIds.includes(i.id))
+      .sort((a, b) => {
+        const elA = articleElement.querySelector(`[data-warning-id="${a.id}"]`)
+        const elB = articleElement.querySelector(`[data-warning-id="${b.id}"]`)
+        if (!elA || !elB) return 0
+        const pos = elA.compareDocumentPosition(elB)
+        if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1
+        return 0
+      })
+    setIssues(sortedInsertedIssues)
+    setUnmatchedIssues(sourceIssues.filter(i => unmatchedIds.includes(i.id)))
   }  // Event delegation handler - use click but with optimized spans
   const handleArticleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
@@ -519,9 +582,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
 
       {/* Page content shown only after loading */}
       {isLoading ? (
-        <div className="bg-white w-full h-full flex items-center justify-center">
-          <ChessLoader duration={10} />
-        </div>
+        <ChessLoader duration={10} />
       ) : (
         <>
           {issues.length > 0 && (
@@ -569,7 +630,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 </button>
               </div>
               <div className="space-y-2">
-                {issues.slice(0, 3).map((item) => (
+                {issues.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => {
@@ -776,7 +837,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
             )}
 
             <article
-              ref={articleRef}
+              ref={articleElRef}
               className="prose max-w-none"
               onClick={handleArticleClick}
             >

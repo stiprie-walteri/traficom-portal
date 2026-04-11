@@ -442,7 +442,7 @@ export function ProjectView() {
                   Project-level summary, legislation scope, and AI-check status across all documents.
                 </p>
               </div>
-              <Button onClick={() => setIsEditOpen(true)} disabled={isProjectRunning}>
+              <Button variant="outline" onClick={() => setIsEditOpen(true)} disabled={isProjectRunning}>
                 <Pencil className="h-4 w-4" />
                 Edit Project
               </Button>
@@ -458,7 +458,7 @@ export function ProjectView() {
                 </div>
                 <Button
                   size="lg"
-                  className="min-w-[220px]"
+                  className="min-w-[220px] hover:bg-slate-700"
                   onClick={() => void handleRerunProject()}
                   disabled={isProjectRunning || documents.length === 0}
                 >
