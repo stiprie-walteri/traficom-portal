@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import logoSvg from "@/assets/logo.svg"
-import { useAuth, useUser, useOrganization, OrganizationSwitcher, UserButton, SignInButton } from "@clerk/clerk-react"
+import { useAuth, useUser, useOrganization, UserButton, SignInButton } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, LegislationTemplate, ProjectEvaluationStatus, ProjectItem, StoredDocument, type BatchUploadFailure } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
@@ -285,13 +285,6 @@ export function DashboardLayout() {
   useEffect(() => {
     void refreshWorkspaceData()
   }, [refreshWorkspaceData])
-
-  // Re-fetch workspace when user switches between organizations
-  useEffect(() => {
-    if (organization?.id !== undefined) {
-      void refreshWorkspaceData()
-    }
-  }, [organization?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleDocumentUpdate = () => {
@@ -922,40 +915,25 @@ export function DashboardLayout() {
         <div className={cn("flex h-full flex-col transition-all duration-300 ease-in-out", isCollapsed ? "w-[76px]" : "w-[320px]")}>
           <div className="p-6 pb-4">
             {!isCollapsed ? (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <button
-                    className="flex h-8 flex-1 items-center transition-opacity hover:opacity-70"
-                    onClick={() => navigate("/")}
-                    title="Go to home"
-                  >
-                    <div className="w-full max-w-[160px]">
-                      <img src={logoSvg} alt="Logo" className="h-auto w-full object-contain" />
-                    </div>
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="ml-2 h-8 w-8 flex-shrink-0"
-                    onClick={() => (window.innerWidth < 768 ? setIsMobileOpen(false) : setIsCollapsed(true))}
-                    title="Close sidebar"
-                  >
-                    <PanelLeftClose className="h-4 w-4" />
-                  </Button>
-                </div>
-                {isSignedIn && (
-                  <OrganizationSwitcher
-                    hidePersonal
-                    afterSelectOrganizationUrl="/dashboard"
-                    afterLeaveOrganizationUrl="/no-organization"
-                    appearance={{
-                      elements: {
-                        rootBox: "w-full",
-                        organizationSwitcherTrigger: "w-full justify-start rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-sm hover:bg-white/90",
-                      },
-                    }}
-                  />
-                )}
+              <div className="flex items-center justify-between">
+                <button
+                  className="flex h-8 flex-1 items-center transition-opacity hover:opacity-70"
+                  onClick={() => navigate("/")}
+                  title="Go to home"
+                >
+                  <div className="w-full max-w-[160px]">
+                    <img src={logoSvg} alt="Logo" className="h-auto w-full object-contain" />
+                  </div>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-2 h-8 w-8 flex-shrink-0"
+                  onClick={() => (window.innerWidth < 768 ? setIsMobileOpen(false) : setIsCollapsed(true))}
+                  title="Close sidebar"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
               </div>
             ) : (
               <div className="flex justify-center">
