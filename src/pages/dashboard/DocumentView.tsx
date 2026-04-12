@@ -7,13 +7,12 @@ import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
 import {
   DocumentStorageService,
-  type ProjectComplianceResult,
-  type ProjectEvaluationResult,
 } from "@/lib/documentStorageService"
 import { ChessLoader } from "@/components/ChessLoader"
 import {
+  buildIssuesFromProjectCompliance,
+  dedupeNormalizedIssues,
   extractNormalizedIssues,
-  type NormalizedIssue,
   type ParseResult,
 } from "@/lib/documentService"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
@@ -43,41 +42,6 @@ function buildParseResult(raw: unknown, fallbackMarkdown: string, fallbackTitle:
     },
     raw: rawRecord,
   }
-}
-
-function buildIssuesFromProjectCompliance(compliance: ProjectComplianceResult): NormalizedIssue[] {
-  const structuredIssues = extractNormalizedIssues(compliance)
-  const results: ProjectEvaluationResult[] =
-    compliance.legislations?.flatMap((group) => group.results) ?? compliance.results ?? []
-  const legacyIssues: NormalizedIssue[] = []
-
-  for (const result of results) {
-    for (const section of result.incorrect_sections ?? []) {
-      if (!section.Quote) continue
-      legacyIssues.push({
-        id: `project-${result.legislation_id || result.legislation_name || "issue"}-${legacyIssues.length}`,
-        submission_excerpt: section.Quote,
-        explanation: section.Comment || result.explanation,
-        main_code: Array.isArray(result.task) ? result.task.join(" / ") : undefined,
-        legislation_source: result.legislation_name || undefined,
-        severity: "error",
-      })
-    }
-  }
-
-  const seen = new Set<string>()
-  return [...structuredIssues, ...legacyIssues].filter((issue) => {
-    const key = [
-      issue.id,
-      issue.submission_excerpt,
-      issue.explanation,
-      issue.legislation_source,
-    ].join("|")
-
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
 }
 
 export function DocumentView() {
@@ -139,7 +103,7 @@ export function DocumentView() {
         if (projectComplianceResponse?.compliance_result) {
           const projectIssues = buildIssuesFromProjectCompliance(projectComplianceResponse.compliance_result)
           if (projectIssues.length > 0) {
-            parseResult.issues = [...projectIssues, ...parseResult.issues]
+            parseResult.issues = dedupeNormalizedIssues([...projectIssues, ...parseResult.issues])
           }
         }
 

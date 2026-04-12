@@ -233,24 +233,190 @@ function collectIssueRecords(payload: unknown, output: Record<string, unknown>[]
 export function extractNormalizedIssues(payload: unknown): NormalizedIssue[] {
   const issueRecords: Record<string, unknown>[] = [];
   collectIssueRecords(payload, issueRecords);
-  const seen = new Set<string>();
+  return dedupeNormalizedIssues(issueRecords.map((issue, index) => normalizeIssue(issue, index)));
+}
 
-  return issueRecords
-    .map((issue, index) => normalizeIssue(issue, index))
-    .filter((issue) => {
-      const key = [
-        issue.title,
-        issue.problem,
-        issue.solution,
-        issue.submission_excerpt,
-        issue.legislation_source,
-        getIssueSuggestedInsertText(issue),
-      ].join("|");
+function normalizeIssueKeyPart(value?: string | null) {
+  return value?.replace(/\s+/g, " ").trim().toLowerCase() || "";
+}
 
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+function getIssueRawId(issue: NormalizedIssue) {
+  return typeof issue.raw?.["id"] === "string" ? issue.raw["id"] : undefined;
+}
+
+function getIssueDedupeKeys(issue: NormalizedIssue) {
+  const rawId = getIssueRawId(issue);
+  const title = normalizeIssueKeyPart(issue.title || issue.main_code || issue.code);
+  const problem = normalizeIssueKeyPart(issue.problem || issue.explanation);
+  const quote = normalizeIssueKeyPart(issue.current_section?.quote || issue.submission_excerpt);
+  const insertableText = normalizeIssueKeyPart(getIssueSuggestedInsertText(issue));
+  const targetSection = normalizeIssueKeyPart(
+    issue.suggested_fix?.insert_location?.target_section_title
+    || issue.suggested_fix?.insert_location?.target_section_id
+    || issue.current_section?.title
+    || issue.current_section?.id
+  );
+  const legislation = normalizeIssueKeyPart(issue.legislation_source || issue.main_code);
+  const keys = new Set<string>();
+
+  if (rawId) keys.add(`id:${rawId}`);
+  if (title && insertableText) keys.add(`title-insert:${title}|${insertableText}`);
+  if (title && problem) keys.add(`title-problem:${title}|${problem}`);
+  if (title && quote) keys.add(`title-quote:${title}|${quote}`);
+  if (problem && quote) keys.add(`problem-quote:${problem}|${quote}`);
+  if (legislation && targetSection && insertableText) {
+    keys.add(`legislation-target-insert:${legislation}|${targetSection}|${insertableText}`);
+  }
+
+  return [...keys];
+}
+
+function issueCompleteness(issue: NormalizedIssue) {
+  return [
+    getIssueRawId(issue),
+    issue.title,
+    issue.problem,
+    issue.solution,
+    issue.current_section?.quote || issue.submission_excerpt,
+    issue.current_section?.title,
+    getIssueSuggestedInsertText(issue),
+    issue.suggested_fix?.insert_location?.target_section_title,
+  ].filter(Boolean).length;
+}
+
+function mergeSectionReference(
+  preferred?: IssueSectionReference,
+  fallback?: IssueSectionReference
+): IssueSectionReference | undefined {
+  if (!preferred && !fallback) return undefined;
+
+  return {
+    id: preferred?.id ?? fallback?.id ?? null,
+    title: preferred?.title ?? fallback?.title ?? null,
+    quote: preferred?.quote ?? fallback?.quote ?? null,
+  };
+}
+
+function mergeSuggestedFix(preferred?: SuggestedFix, fallback?: SuggestedFix): SuggestedFix | undefined {
+  if (!preferred && !fallback) return undefined;
+
+  return {
+    insertable_text: preferred?.insertable_text || fallback?.insertable_text,
+    insert_location: preferred?.insert_location || fallback?.insert_location,
+  };
+}
+
+function mergeIssues(existing: NormalizedIssue, incoming: NormalizedIssue): NormalizedIssue {
+  const preferred = issueCompleteness(incoming) > issueCompleteness(existing) ? incoming : existing;
+  const fallback = preferred === incoming ? existing : incoming;
+
+  return {
+    ...fallback,
+    ...preferred,
+    id: preferred.id || fallback.id,
+    issue_type: preferred.issue_type || fallback.issue_type,
+    title: preferred.title || fallback.title,
+    code: preferred.code || fallback.code,
+    main_code: preferred.main_code || fallback.main_code,
+    legislation_source: preferred.legislation_source || fallback.legislation_source,
+    submission_excerpt: preferred.submission_excerpt || fallback.submission_excerpt,
+    explanation: preferred.explanation || fallback.explanation,
+    problem: preferred.problem || fallback.problem,
+    solution: preferred.solution || fallback.solution,
+    current_section: mergeSectionReference(preferred.current_section, fallback.current_section),
+    suggested_fix: mergeSuggestedFix(preferred.suggested_fix, fallback.suggested_fix),
+    submission_sections: preferred.submission_sections || fallback.submission_sections,
+    severity: preferred.severity || fallback.severity,
+    raw: {
+      ...(fallback.raw || {}),
+      ...(preferred.raw || {}),
+    },
+  };
+}
+
+export function dedupeNormalizedIssues(issues: NormalizedIssue[]): NormalizedIssue[] {
+  const deduped: NormalizedIssue[] = [];
+  const keyToIndex = new Map<string, number>();
+
+  for (const issue of issues) {
+    const keys = getIssueDedupeKeys(issue);
+    const existingKey = keys.find((key) => keyToIndex.has(key));
+
+    if (existingKey) {
+      const existingIndex = keyToIndex.get(existingKey);
+      if (existingIndex === undefined) continue;
+
+      deduped[existingIndex] = mergeIssues(deduped[existingIndex], issue);
+      for (const key of getIssueDedupeKeys(deduped[existingIndex])) {
+        keyToIndex.set(key, existingIndex);
+      }
+      continue;
+    }
+
+    const nextIndex = deduped.length;
+    deduped.push(issue);
+    const usableKeys = keys.length > 0 ? keys : [`fallback:${issue.id}`];
+    for (const key of usableKeys) {
+      keyToIndex.set(key, nextIndex);
+    }
+  }
+
+  return deduped;
+}
+
+function getProjectResults(payload: unknown): Record<string, unknown>[] {
+  if (!isRecord(payload)) return [];
+
+  const resultGroups = Array.isArray(payload["legislations"])
+    ? payload["legislations"].flatMap((group) => {
+        if (!isRecord(group) || !Array.isArray(group["results"])) return [];
+        return group["results"].filter(isRecord);
+      })
+    : [];
+
+  const topLevelResults = Array.isArray(payload["results"])
+    ? payload["results"].filter(isRecord)
+    : [];
+
+  return [...resultGroups, ...topLevelResults];
+}
+
+export function buildIssuesFromProjectCompliance(compliance: unknown): NormalizedIssue[] {
+  const structuredIssues = extractNormalizedIssues(compliance);
+  if (structuredIssues.length > 0) return structuredIssues;
+
+  const legacyIssues: NormalizedIssue[] = [];
+
+  for (const result of getProjectResults(compliance)) {
+    const incorrectSections = Array.isArray(result["incorrect_sections"])
+      ? result["incorrect_sections"].filter(isRecord)
+      : [];
+
+    for (const section of incorrectSections) {
+      const quote = stringOrUndefined(section["Quote"]) ?? stringOrUndefined(section["quote"]);
+      if (!quote) continue;
+
+      const legislationId = stringOrUndefined(result["legislation_id"])
+        ?? stringOrUndefined(result["legislation_name"])
+        ?? "issue";
+      const task = Array.isArray(result["task"])
+        ? result["task"].filter((item): item is string => typeof item === "string").join(" / ")
+        : undefined;
+
+      legacyIssues.push({
+        id: `project-${legislationId}-${legacyIssues.length}`,
+        submission_excerpt: quote,
+        explanation: stringOrUndefined(section["Comment"])
+          ?? stringOrUndefined(section["comment"])
+          ?? stringOrUndefined(result["explanation"]),
+        main_code: task,
+        legislation_source: stringOrUndefined(result["legislation_name"]),
+        severity: "error",
+      });
+    }
+  }
+
+  return dedupeNormalizedIssues(legacyIssues);
 }
 
 export function getIssueTitle(issue: NormalizedIssue): string {

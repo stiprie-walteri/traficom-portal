@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw";
@@ -7,6 +7,7 @@ import orgSubmission from "@/assets/org_submission.md?raw"
 import { ChessLoader } from "@/components/ChessLoader"
 import { Badge } from "@/components/ui/badge"
 import documentService, {
+  dedupeNormalizedIssues,
   ParseResult,
   NormalizedIssue,
   getIssueFixLocation,
@@ -18,9 +19,10 @@ import documentService, {
 } from "@/lib/documentService"
 import { useApiClient } from "@/hooks/useApiClient"
 import { DocumentStorageService, DocumentVersion } from "@/lib/documentStorageService"
-import { History } from "lucide-react"
+import { Check, ChevronDown, History, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAppAlert } from "@/hooks/useAppAlert"
+import { getIssueBackendPayload } from "@/lib/issueActions"
 
 // warnings and highlights are provided by the backend `issues` list
 
@@ -63,6 +65,7 @@ interface RealResultsProps {
 
 export function RealResults({ storedData, documentOnly = false }: RealResultsProps = {}) {
   const location = useLocation()
+  const navigate = useNavigate()
   const [activeIssue, setActiveIssue] = useState<NormalizedIssue | null>(null)
   // Use stored data if provided, otherwise use location state
   const filename = storedData?.filename || (location.state?.filename as string | undefined)
@@ -75,6 +78,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
   const [rawIssues, setRawIssues] = useState<NormalizedIssue[]>([])
   const [unmatchedIssues, setUnmatchedIssues] = useState<NormalizedIssue[]>([])
   const [showUnmatched, setShowUnmatched] = useState(false)
+  const [openResultIssueIds, setOpenResultIssueIds] = useState<Set<string>>(new Set())
   const [markdown, setMarkdown] = useState<string | null>(null)
   const [, setLastResponse] = useState<ParseResult | null>(null)
   // Always send fake file payload for testing
@@ -99,13 +103,19 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
   // Versions state
   const [versions, setVersions] = useState<DocumentVersion[]>([])
   const [currentVersionNo, setCurrentVersionNo] = useState<number | null>(null)
+  const [currentContentHash, setCurrentContentHash] = useState<string | null>(null)
   const [isLoadingVersions, setIsLoadingVersions] = useState(false)
+  const [acceptingIssueId, setAcceptingIssueId] = useState<string | null>(null)
 
   const apiClient = useApiClient()
   const storageService = useMemo(() => new DocumentStorageService(apiClient), [apiClient])
 
   const documentId = storedData?.document_id
   const organizationId = storedData?.organization_id
+  const editorIssues = useMemo(() => {
+    const currentIssues = rawIssues.length > 0 ? rawIssues : [...issues, ...unmatchedIssues]
+    return dedupeNormalizedIssues(currentIssues)
+  }, [issues, rawIssues, unmatchedIssues])
 
   const markdownContent = useMemo(() => (
     <ReactMarkdown
@@ -147,9 +157,10 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
         setUnmatchedIssues([])
         setMarkdown(orgSubmission)
       } else {
+        const normalizedIssues = dedupeNormalizedIssues(passedResult.issues || [])
         setMarkdown(passedResult.markdown || orgSubmission)
-        setRawIssues(passedResult.issues || [])
-        setIssues(passedResult.issues || [])
+        setRawIssues(normalizedIssues)
+        setIssues(normalizedIssues)
         setDocumentSummary({
           name: passedResult.summary?.organization ? `${passedResult.summary.organization} MAINTENANCE ORGANISATION EXPOSITION` : undefined,
           aiSummary: passedResult.summary?.text,
@@ -206,9 +217,10 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
         setUnmatchedIssues([])
         setMarkdown(orgSubmission)
       } else {
+        const normalizedIssues = dedupeNormalizedIssues(res.issues || [])
         setMarkdown(res.markdown || orgSubmission)
-        setRawIssues(res.issues || [])
-        setIssues(res.issues || [])
+        setRawIssues(normalizedIssues)
+        setIssues(normalizedIssues)
         setDocumentSummary({
           name: res.summary?.organization ? `${res.summary.organization} MAINTENANCE ORGANISATION EXPOSITION` : undefined,
           aiSummary: res.summary?.text,
@@ -264,6 +276,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
         setVersions(response?.items || [])
         if (response?.items?.length > 0 && currentVersionNo === null) {
           setCurrentVersionNo(response.items[0].version_no)
+          setCurrentContentHash(response.items[0].content_hash)
         }
       } catch (err) {
         console.error("Error fetching versions:", err)
@@ -285,6 +298,7 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       const response = await storageService.getVersion(organizationId, documentId, versionNo)
 
       setMarkdown(response.content_md)
+      setCurrentContentHash(response.version.content_hash)
       // Reset state for new content
       setRawIssues([])
       setIssues([])
@@ -304,6 +318,104 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
       })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const scrollIssueIntoView = (issue: NormalizedIssue) => {
+    const element = document.getElementById(issue.id)
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      })
+    }
+  }
+
+  const handleShowIssueInDocument = (issue: NormalizedIssue) => {
+    setActiveIssue(issue)
+    setShowwarningsList(false)
+    scrollIssueIntoView(issue)
+  }
+
+  const handleToggleResultIssue = (issue: NormalizedIssue) => {
+    setOpenResultIssueIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(issue.id)) {
+        next.delete(issue.id)
+      } else {
+        next.add(issue.id)
+      }
+      return next
+    })
+  }
+
+  const handleEditIssue = (issue: NormalizedIssue) => {
+    if (!documentId) return
+
+    navigate(`/dashboard/document/${documentId}/editor`, {
+      state: {
+        issueId: issue.id,
+        issue,
+        issues: editorIssues,
+        mode: "edit",
+      },
+    })
+  }
+
+  const handleAcceptIssue = async (issue: NormalizedIssue) => {
+    if (!documentId || !organizationId || !currentVersionNo) {
+      toast({
+        variant: "warning",
+        title: "Open the saved document first",
+        description: "This suggestion can only be applied to a saved document version.",
+      })
+      return
+    }
+
+    setAcceptingIssueId(issue.id)
+
+    try {
+      const response = await storageService.applySuggestions(
+        organizationId,
+        documentId,
+        currentVersionNo,
+        {
+          ...getIssueBackendPayload(issue),
+          save: true,
+          allow_partial: false,
+          message: `Applied AI suggestion: ${getIssueTitle(issue)}`,
+          expected_content_hash: currentContentHash || undefined,
+        }
+      )
+
+      setMarkdown(response.patched_content_md)
+      setRawIssues((prev) => prev.filter((item) => item.id !== issue.id))
+      setIssues((prev) => prev.filter((item) => item.id !== issue.id))
+      setUnmatchedIssues((prev) => prev.filter((item) => item.id !== issue.id))
+      setOpenResultIssueIds((prev) => {
+        const next = new Set(prev)
+        next.delete(issue.id)
+        return next
+      })
+      setActiveIssue(null)
+
+      const savedVersion = response.saved_version
+      if (savedVersion) {
+        setCurrentVersionNo(savedVersion.version_no)
+        setCurrentContentHash(savedVersion.content_hash)
+        setVersions((prev) => {
+          const next = prev.filter((version) => version.version_id !== savedVersion.version_id)
+          return [savedVersion, ...next]
+        })
+      }
+
+      window.dispatchEvent(new Event("documentListUpdated"))
+      toast({ variant: "success", title: "Suggestion accepted", description: "A new document version was saved." })
+    } catch (acceptError) {
+      console.error(acceptError)
+      toast({ variant: "destructive", title: "Accept failed", description: "Could not apply this suggestion." })
+    } finally {
+      setAcceptingIssueId(null)
     }
   }
 
@@ -664,37 +776,79 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
               </div>
               <div className="space-y-2">
                 {issues.map((item) => {
-                  const { solution, suggestedText } = getIssueFixParts(item)
-                  const fixText = solution || suggestedText
+                  const { solution, suggestedText, fixLocation, showSuggestedText, hasFix } = getIssueFixParts(item)
+                  const isOpen = openResultIssueIds.has(item.id)
 
                   return (
-                  <button
+                  <div
                     key={item.id}
-                    onClick={() => {
-                      setActiveIssue(item);
-                      setShowwarningsList(false);
-                      const element = document.getElementById(item.id);
-                      if (element) {
-                        element.scrollIntoView({
-                          behavior: "smooth",
-                          block: "center",
-                        });
-                      }
-                    }}
                     className="w-full text-left p-2 hover:bg-gray-100 rounded border border-gray-300"
                   >
-                    <p className="text-xs text-gray-800 font-medium mb-1 line-clamp-2">
-                      {getIssueTitle(item)}
-                    </p>
-                    <p className="text-xs text-gray-600 line-clamp-1">
-                      {getIssueProblem(item)}
-                    </p>
-                    {fixText && (
-                      <p className="mt-1 text-xs text-emerald-700 line-clamp-2">
-                        How to fix: {fixText}
-                      </p>
+                    <button
+                      className="flex w-full items-start justify-between gap-3 text-left"
+                      onClick={() => handleToggleResultIssue(item)}
+                      aria-expanded={isOpen}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-800 font-medium line-clamp-2">
+                          {getIssueTitle(item)}
+                        </p>
+                        {!isOpen && (
+                          <p className="mt-1 text-xs text-gray-600 line-clamp-2">
+                            {getIssueProblem(item)}
+                          </p>
+                        )}
+                      </div>
+                      <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-gray-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isOpen && (
+                      <div className="mt-2">
+                        <p className="whitespace-pre-wrap text-xs text-gray-700">{getIssueProblem(item)}</p>
+                        {hasFix && (
+                          <div className="mt-2 rounded bg-emerald-50 p-2">
+                            <p className="text-xs font-semibold text-emerald-900">How to fix</p>
+                            {solution && (
+                              <p className="mt-1 whitespace-pre-wrap text-xs text-emerald-900">{solution}</p>
+                            )}
+                            {showSuggestedText && (
+                              <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-white/80 p-2 text-xs text-emerald-950">
+                                {suggestedText}
+                              </pre>
+                            )}
+                            {fixLocation && (
+                              <p className="mt-2 text-xs text-emerald-800">{fixLocation}</p>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => void handleAcceptIssue(item)}
+                            disabled={acceptingIssueId === item.id}
+                          >
+                            <Check />
+                            {acceptingIssueId === item.id ? "Accepting..." : "Accept"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditIssue(item)}
+                          >
+                            <Pencil />
+                            Edit
+                          </Button>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2 w-full"
+                          onClick={() => handleShowIssueInDocument(item)}
+                        >
+                          Show in document
+                        </Button>
+                      </div>
                     )}
-                  </button>
+                  </div>
                   )
                 })}
               </div>
@@ -748,6 +902,19 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                   </ul>
                 </div>
               )}
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <Button
+                  onClick={() => void handleAcceptIssue(activeIssue)}
+                  disabled={acceptingIssueId === activeIssue.id}
+                >
+                  <Check />
+                  {acceptingIssueId === activeIssue.id ? "Accepting..." : "Accept as is"}
+                </Button>
+                <Button variant="outline" onClick={() => handleEditIssue(activeIssue)}>
+                  <Pencil />
+                  Edit
+                </Button>
+              </div>
               <div className="flex items-center justify-between pt-3 border-t border-gray-300">
                 <button
                   onClick={() => navigateToIssue("prev")}
@@ -809,7 +976,10 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                 <div className="flex flex-wrap items-center gap-2">
                   {documentId && (
                     <Button asChild variant="outline" size="sm">
-                      <Link to={`/dashboard/document/${documentId}/editor`}>
+                      <Link
+                        to={`/dashboard/document/${documentId}/editor`}
+                        state={{ issues: editorIssues }}
+                      >
                         Edit Markdown
                       </Link>
                     </Button>
@@ -917,25 +1087,60 @@ export function RealResults({ storedData, documentOnly = false }: RealResultsPro
                         showSuggestedText,
                         hasFix,
                       } = getIssueFixParts(issue)
+                      const isOpen = openResultIssueIds.has(issue.id)
 
                       return (
                         <div key={issue.id} className="border-l-2 border-amber-400 pl-3">
-                          <p className="text-sm font-semibold text-amber-950">{getIssueTitle(issue)}</p>
-                          <p className="mt-1 text-sm text-amber-900">{getIssueProblem(issue)}</p>
-                          {hasFix && (
-                            <div className="mt-3 rounded border border-emerald-200 bg-white/70 p-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
-                              {solution && (
-                                <p className="mt-1 whitespace-pre-wrap text-xs text-emerald-950">{solution}</p>
+                          <button
+                            className="flex w-full items-start justify-between gap-3 text-left"
+                            onClick={() => handleToggleResultIssue(issue)}
+                            aria-expanded={isOpen}
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-amber-950">{getIssueTitle(issue)}</p>
+                              {!isOpen && (
+                                <p className="mt-1 line-clamp-2 text-sm text-amber-900">{getIssueProblem(issue)}</p>
                               )}
-                              {showSuggestedText && (
-                                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-emerald-50 p-2 text-xs text-emerald-950">
-                                  {suggestedText}
-                                </pre>
+                            </div>
+                            <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-amber-700 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          {isOpen && (
+                            <div className="mt-2">
+                              <p className="whitespace-pre-wrap text-sm text-amber-900">{getIssueProblem(issue)}</p>
+                              {hasFix && (
+                                <div className="mt-3 rounded border border-emerald-200 bg-white/70 p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
+                                  {solution && (
+                                    <p className="mt-1 whitespace-pre-wrap text-xs text-emerald-950">{solution}</p>
+                                  )}
+                                  {showSuggestedText && (
+                                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-emerald-50 p-2 text-xs text-emerald-950">
+                                      {suggestedText}
+                                    </pre>
+                                  )}
+                                  {fixLocation && (
+                                    <p className="mt-2 text-xs text-emerald-800">{fixLocation}</p>
+                                  )}
+                                </div>
                               )}
-                              {fixLocation && (
-                                <p className="mt-2 text-xs text-emerald-800">{fixLocation}</p>
-                              )}
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleAcceptIssue(issue)}
+                                  disabled={acceptingIssueId === issue.id}
+                                >
+                                  <Check />
+                                  {acceptingIssueId === issue.id ? "Accepting..." : "Accept as is"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditIssue(issue)}
+                                >
+                                  <Pencil />
+                                  Edit
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
