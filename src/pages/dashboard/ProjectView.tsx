@@ -12,6 +12,14 @@ import {
   type ProjectItem,
   type StoredDocument,
 } from "@/lib/documentStorageService"
+import {
+  extractNormalizedIssues,
+  getIssueFixLocation,
+  getIssueProblem,
+  getIssueSolution,
+  getIssueSuggestedInsertText,
+  getIssueTitle,
+} from "@/lib/documentService"
 import { ChessLoader } from "@/components/ChessLoader"
 import { UploadChessLoader } from "@/components/ChessLoader"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
@@ -26,12 +34,17 @@ function getShortProjectStatus(statusMessage?: string | null, currentTask?: stri
 
 type FindingRow = {
   legislationName: string
+  title: string
   taskLabel: string
   explanation: string
+  solution: string
+  suggestedText: string
+  fixLocation: string | null
   missingSections: string[]
   incorrectSections: string[]
   isCorrect: boolean
   isCancelled: boolean
+  correctnessScore?: number
 }
 
 function uniqueItems(items: Array<string | undefined | null>) {
@@ -56,20 +69,28 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
   let findings = 0
   let missingSections = 0
   let correctSections = 0
+  let correctnessTotal = 0
+  let scoredItems = 0
   const allSections = completedResults.length
   const cancelledCount = results.length - completedResults.length
 
   for (const item of completedResults) {
+    const issueCount = item.issues?.length || 0
     const missingForTask = uniqueItems(item.missing_sections || [])
-    const taskIsCorrect = isTaskCorrect(item)
+    const taskIsCorrect = isTaskCorrect(item) && issueCount === 0
 
-    if (!taskIsCorrect) {
-      findings += 1
-    } else {
+    if (taskIsCorrect) {
       correctSections += 1
+    } else {
+      findings += issueCount > 0 ? issueCount : 1
     }
 
     missingSections += missingForTask.length
+
+    if (typeof item.correctness_score === "number") {
+      correctnessTotal += item.correctness_score
+      scoredItems += 1
+    }
   }
 
   return {
@@ -81,21 +102,51 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
     allSections,
     cancelledCount,
     isPartial: cancelledCount > 0,
-    averageCorrectScore: allSections > 0 ? Math.round((correctSections / allSections) * 100) : 0,
+    averageCorrectScore: scoredItems > 0
+      ? Math.round(correctnessTotal / scoredItems)
+      : allSections > 0
+        ? Math.round((correctSections / allSections) * 100)
+        : 0,
   }
 }
 
 function buildFindingRows(results: ProjectEvaluationResult[]): FindingRow[] {
   return results
-    .map((result) => ({
-      legislationName: result.legislation_name || "Finding",
-      taskLabel: Array.isArray(result.task) ? result.task.join(" / ") : "Finding",
-      explanation: result.explanation,
-      missingSections: uniqueItems(result.missing_sections || []),
-      incorrectSections: uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote)),
-      isCorrect: isTaskCorrect(result),
-      isCancelled: result.status === "cancelled",
-    }))
+    .flatMap<FindingRow>((result) => {
+      const taskLabel = Array.isArray(result.task) ? result.task.join(" / ") : "Finding"
+      const isCancelled = result.status === "cancelled"
+      const base = {
+        legislationName: result.legislation_name || "Legislation",
+        taskLabel,
+        missingSections: uniqueItems(result.missing_sections || []),
+        incorrectSections: uniqueItems((result.incorrect_sections || []).map((section) => section.ID || section.Quote)),
+        isCancelled,
+        correctnessScore: result.correctness_score,
+      }
+      const issues = isCancelled ? [] : extractNormalizedIssues(result)
+
+      if (issues.length > 0) {
+        return issues.map((issue) => ({
+          ...base,
+          title: getIssueTitle(issue),
+          explanation: getIssueProblem(issue),
+          solution: getIssueSolution(issue),
+          suggestedText: getIssueSuggestedInsertText(issue),
+          fixLocation: getIssueFixLocation(issue),
+          isCorrect: false,
+        }))
+      }
+
+      return [{
+        ...base,
+        title: taskLabel,
+        explanation: result.explanation || (isTaskCorrect(result) ? "Task passed all checks." : ""),
+        solution: "",
+        suggestedText: "",
+        fixLocation: null,
+        isCorrect: !isCancelled && isTaskCorrect(result),
+      }]
+    })
     .sort((left, right) => {
       if (left.isCancelled !== right.isCancelled) return Number(left.isCancelled) - Number(right.isCancelled)
       return Number(left.isCorrect) - Number(right.isCorrect)
@@ -585,7 +636,7 @@ export function ProjectView() {
                         <FileWarning className="h-4 w-4 text-amber-600" />
                       )}
                       <p className={`truncate text-sm font-semibold ${finding.isCancelled ? "text-slate-400" : finding.isCorrect ? "text-green-800" : ""}`}>
-                        {finding.taskLabel}
+                        {finding.title}
                       </p>
                       {finding.isCancelled && (
                         <span className="ml-2 whitespace-nowrap rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -598,11 +649,28 @@ export function ProjectView() {
                         </span>
                       )}
                     </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{finding.taskLabel}</p>
                     <p className={`mt-2 text-sm ${finding.isCancelled ? "text-slate-400" : finding.isCorrect ? "text-green-700/80" : "text-slate-700"}`}>
                       {finding.isCancelled
                         ? "Task was not analyzed due to evaluation cancellation."
                         : finding.explanation || (finding.isCorrect ? "Task passed all checks." : "")}
                     </p>
+                    {!finding.isCancelled && (finding.solution || finding.suggestedText || finding.fixLocation) && (
+                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
+                        {finding.solution && (
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-950">{finding.solution}</p>
+                        )}
+                        {finding.suggestedText && finding.suggestedText !== finding.solution && (
+                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-2 text-xs text-emerald-950">
+                            {finding.suggestedText}
+                          </pre>
+                        )}
+                        {finding.fixLocation && (
+                          <p className="mt-2 text-xs text-emerald-800">{finding.fixLocation}</p>
+                        )}
+                      </div>
+                    )}
                     {!finding.isCancelled && finding.isCorrect && (
                       <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-green-700">
                         This task is correct.
@@ -639,6 +707,9 @@ export function ProjectView() {
                     <p className="mt-2 text-xs text-muted-foreground">
                       Status: {finding.isCancelled ? "Cancelled" : finding.isCorrect ? "Correct" : "Needs review"}
                     </p>
+                    {typeof finding.correctnessScore === "number" && (
+                      <p className="mt-1 text-xs text-muted-foreground">Score: {finding.correctnessScore}</p>
+                    )}
                   </div>
                 </div>
               </div>

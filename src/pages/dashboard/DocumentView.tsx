@@ -5,73 +5,43 @@ import { getAnalysisResult, hasAnalysisResult } from "@/lib/mockData"
 import { RealResults } from "./RealResults"
 import { useUser } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService, type ProjectComplianceResult, type ProjectEvaluationResult } from "@/lib/documentStorageService"
+import {
+  DocumentStorageService,
+} from "@/lib/documentStorageService"
 import { ChessLoader } from "@/components/ChessLoader"
-import { type NormalizedIssue, type ParseResult } from "@/lib/documentService"
+import {
+  buildIssuesFromProjectCompliance,
+  dedupeNormalizedIssues,
+  extractNormalizedIssues,
+  type ParseResult,
+} from "@/lib/documentService"
 import type { DashboardOutletContext } from "@/layouts/DashboardLayout"
 
-/** Convert a raw compliance result JSON (as stored in DB) into a ParseResult for RealResults. */
-function buildParseResult(raw: Record<string, unknown>): ParseResult {
-  const markdown = typeof raw["markdown"] === "string" ? raw["markdown"] : ""
-  const metrics = (raw["metrics"] && typeof raw["metrics"] === "object")
-    ? (raw["metrics"] as Record<string, unknown>)
+function buildParseResult(raw: unknown, fallbackMarkdown: string, fallbackTitle: string): ParseResult {
+  const rawRecord = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {}
+  const markdown = typeof rawRecord["markdown"] === "string" ? rawRecord["markdown"] : fallbackMarkdown
+  const metrics = rawRecord["metrics"] && typeof rawRecord["metrics"] === "object"
+    ? rawRecord["metrics"] as Record<string, unknown>
     : undefined
-
-  const metadata = (raw["parsed_codes"] as Record<string, unknown> | undefined)?.["document_metadata"] as Record<string, unknown> | undefined ?? {}
-  const rawIssues: Record<string, unknown>[] =
-    Array.isArray((raw["issues"] as Record<string, unknown> | undefined)?.["issues"])
-      ? ((raw["issues"] as Record<string, unknown>)["issues"] as Record<string, unknown>[])
-      : []
-
-  const issues: NormalizedIssue[] = rawIssues.map((r, i) => ({
-    id: `issue-${i}`,
-    code: typeof r["code"] === "string" ? r["code"] : undefined,
-    main_code: typeof r["main_code"] === "string" ? r["main_code"] : undefined,
-    submission_excerpt: typeof r["submission_excerpt"] === "string" ? r["submission_excerpt"] : undefined,
-    explanation: typeof r["explanation"] === "string" ? r["explanation"] : undefined,
-    legislation_source: typeof r["legislation_source"] === "string" ? r["legislation_source"] : undefined,
-    severity: typeof r["severity"] === "string" ? r["severity"] : undefined,
-    submission_sections: Array.isArray(r["submission_sections"]) ? r["submission_sections"] as string[] : undefined,
-    raw: r,
-  }))
+  const metadata = (rawRecord["parsed_codes"] as Record<string, unknown> | undefined)?.["document_metadata"] as Record<string, unknown> | undefined ?? {}
+  const summaryText = [metadata["organization"], metadata["approval_number"]].filter(Boolean).join(" - ") || fallbackTitle
 
   return {
     ok: true,
     markdown,
-    issues,
+    issues: extractNormalizedIssues(raw),
     metrics,
     summary: {
-      text: [metadata["organization"], metadata["approval_number"]].filter(Boolean).join(" — ") as string,
-      organization: typeof metadata["organization"] === "string" ? metadata["organization"] : undefined,
+      text: summaryText,
+      organization: typeof metadata["organization"] === "string" ? metadata["organization"] : fallbackTitle || undefined,
       approval_number: typeof metadata["approval_number"] === "string" ? metadata["approval_number"] : undefined,
       parsed_date: typeof metadata["parsed_date"] === "string" ? metadata["parsed_date"] : undefined,
       raw: metadata,
     },
-    raw: raw as Record<string, unknown>,
+    raw: rawRecord,
   }
-}
-
-/** Convert project evaluation results into NormalizedIssue[] so RealResults can highlight them inline. */
-function buildIssuesFromProjectCompliance(compliance: ProjectComplianceResult): NormalizedIssue[] {
-  const results: ProjectEvaluationResult[] =
-    compliance.legislations?.flatMap((g) => g.results) ?? compliance.results ?? []
-
-  const issues: NormalizedIssue[] = []
-  let i = 0
-  for (const result of results) {
-    for (const section of result.incorrect_sections ?? []) {
-      if (!section.Quote) continue
-      issues.push({
-        id: `proj-issue-${i++}`,
-        submission_excerpt: section.Quote,
-        explanation: section.Comment || result.explanation,
-        main_code: Array.isArray(result.task) ? result.task.join(" / ") : undefined,
-        legislation_source: result.legislation_name,
-        severity: "error",
-      })
-    }
-  }
-  return issues
 }
 
 export function DocumentView() {
@@ -98,25 +68,27 @@ export function DocumentView() {
       setIsLoading(true)
       setError(null)
 
-      // 1. Check in-memory session cache first (populated right after upload in same session)
       if (hasAnalysisResult(id)) {
         setRealData(getAnalysisResult(id))
         setIsLoading(false)
         return
       }
 
-      // 2. Fetch document + project compliance in parallel so all issues are ready before rendering
       try {
-        const [response, projectComplianceResponse] = await Promise.all([
+        const [response, evaluationStatus, projectComplianceResponse] = await Promise.all([
           storageService.getDocument(organizationId, id),
+          storageService.getEvaluationStatus(organizationId, id).catch(() => null),
           projectId
             ? storageService.getProjectCompliance(organizationId, projectId).catch(() => null)
             : Promise.resolve(null),
         ])
 
-        const complianceResult = response.version?.compliance_result
-        const parseResult: ParseResult = complianceResult
-          ? buildParseResult(complianceResult as Record<string, unknown>)
+        const savedComplianceResult = response.version?.compliance_result
+        const statusComplianceResult = evaluationStatus?.results?.length ? evaluationStatus : null
+        const complianceResult = savedComplianceResult || statusComplianceResult
+        const filename = (response.document.title || id) + ".pdf"
+        const parseResult = complianceResult
+          ? buildParseResult(complianceResult, response.content_md, response.document.title || "")
           : {
               ok: true,
               markdown: response.content_md,
@@ -128,17 +100,16 @@ export function DocumentView() {
               },
             }
 
-        // Merge project evaluation recommendations so highlights are ready on first render
         if (projectComplianceResponse?.compliance_result) {
-          const projIssues = buildIssuesFromProjectCompliance(projectComplianceResponse.compliance_result)
-          if (projIssues.length > 0) {
-            parseResult.issues = [...projIssues, ...(parseResult.issues ?? [])]
+          const projectIssues = buildIssuesFromProjectCompliance(projectComplianceResponse.compliance_result)
+          if (projectIssues.length > 0) {
+            parseResult.issues = dedupeNormalizedIssues([...projectIssues, ...parseResult.issues])
           }
         }
 
         setRealData({
           parseResult,
-          filename: (response.document.title || id) + ".pdf",
+          filename,
           document_id: id,
           organization_id: organizationId,
         })
@@ -150,7 +121,7 @@ export function DocumentView() {
       }
     }
 
-    fetchDoc()
+    void fetchDoc()
   }, [id, user, organizationId, projectId, storageService])
 
   if (isLoading) {

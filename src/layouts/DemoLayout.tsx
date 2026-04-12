@@ -140,7 +140,7 @@ export function DemoLayout() {
             <>
               <div className="mx-3 h-px bg-border" />
               <div className="p-4">
-                <Button 
+                <Button
                   className={cn("w-full transition-all", isCollapsed ? "px-0 justify-center" : "gap-2")}
                   onClick={() => navigate("/dashboard")}
                   title="Go to Your Projects"

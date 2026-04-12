@@ -20,8 +20,8 @@ export interface LegislationTemplate {
 }
 
 export interface ProjectEvaluationResult {
-    legislation_id: string;
-    legislation_name: string;
+    legislation_id?: string | null;
+    legislation_name?: string | null;
     task: string[];
     status?: "completed" | "cancelled";
     exists: boolean;
@@ -30,6 +30,7 @@ export interface ProjectEvaluationResult {
     correctness_score?: number;
     missing_sections?: string[];
     incorrect_sections?: IncorrectSection[];
+    issues?: DocumentationIssue[];
     reasoning_steps?: ReasoningStep[];
 }
 
@@ -194,12 +195,42 @@ export interface IncorrectSection {
     Comment: string;
 }
 
+export interface IssueSectionReference {
+    id?: string | null;
+    title?: string | null;
+    quote?: string | null;
+}
+
+export interface SuggestedInsertLocation {
+    action?: string;
+    target_section_id?: string | null;
+    target_section_title?: string | null;
+    anchor_quote?: string | null;
+    placement?: string;
+}
+
+export interface SuggestedFix {
+    insertable_text?: string;
+    insert_location?: SuggestedInsertLocation;
+}
+
+export interface DocumentationIssue {
+    id?: string;
+    issue_type?: string;
+    title?: string;
+    legislation_reference?: string | null;
+    current_section?: IssueSectionReference | null;
+    problem?: string;
+    solution?: string;
+    suggested_fix?: SuggestedFix;
+}
+
 export interface ReasoningStep {
     step: number;
-    thought: string;
-    sections_queried: number[];
-    section_titles: string[];
-    references_queried: string[];
+    thought?: string | null;
+    sections_queried?: number[];
+    section_titles?: string[];
+    references_queried?: string[];
 }
 
 export interface EvaluateTaskResult {
@@ -211,7 +242,40 @@ export interface EvaluateTaskResult {
     correctness_score?: number;
     missing_sections?: string[];
     incorrect_sections?: IncorrectSection[];
+    issues?: DocumentationIssue[];
     reasoning_steps?: ReasoningStep[];
+}
+
+export type DocumentCompliancePayload = EvaluateTaskResult[] | {
+    results?: EvaluateTaskResult[];
+    legislations?: ProjectComplianceLegislationGroup[];
+    [key: string]: unknown;
+};
+
+export interface ApplySuggestionsRequest {
+    issue_ids?: string[];
+    issues?: DocumentationIssue[];
+    save: boolean;
+    allow_partial?: boolean;
+    message?: string;
+    expected_content_hash?: string;
+}
+
+export interface SuggestionApplicationResult {
+    issue_id?: string;
+    status?: string;
+    action?: string;
+    message?: string;
+    [key: string]: unknown;
+}
+
+export interface ApplySuggestionsResponse {
+    patched_content_md: string;
+    applied_count: number;
+    skipped_count: number;
+    failed_count: number;
+    applications: SuggestionApplicationResult[];
+    saved_version?: DocumentVersion | null;
 }
 
 /** 202 response from POST .../evaluate */
@@ -247,7 +311,7 @@ export interface DocumentEvaluationStatus {
     total_tasks: number;
     completed_count: number;
     current_task: string[] | null;
-    compliance_result: EvaluateTaskResult[] | null;
+    compliance_result: DocumentCompliancePayload | null;
 }
 
 /** @deprecated use startEvaluation + getEvaluationStatus instead */
@@ -749,8 +813,8 @@ export class DocumentStorageService {
     async getCompliance(
         organizationId: string,
         documentId: string
-    ): Promise<{ document_id: string; version_id: string; compliance_result: EvaluateTaskResult[] | null }> {
-        const response = await this.apiClient.get<{ document_id: string; version_id: string; compliance_result: EvaluateTaskResult[] | null }>(
+    ): Promise<{ document_id: string; version_id: string; compliance_result: DocumentCompliancePayload | null }> {
+        const response = await this.apiClient.get<{ document_id: string; version_id: string; compliance_result: DocumentCompliancePayload | null }>(
             `/orgs/${organizationId}/documents/${documentId}/compliance`
         );
         return response.data;
@@ -770,6 +834,19 @@ export class DocumentStorageService {
             `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/compliance`,
             { result }
         );
+    }
+
+    async applySuggestions(
+        organizationId: string,
+        documentId: string,
+        versionNo: number,
+        payload: ApplySuggestionsRequest
+    ): Promise<ApplySuggestionsResponse> {
+        const response = await this.apiClient.post<ApplySuggestionsResponse>(
+            `/orgs/${organizationId}/documents/${documentId}/versions/${versionNo}/suggestions/apply`,
+            payload
+        );
+        return response.data;
     }
 
     /**
