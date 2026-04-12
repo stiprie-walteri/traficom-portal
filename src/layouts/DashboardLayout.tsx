@@ -21,9 +21,18 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import logoSvg from "@/assets/logo.svg"
 import { useAuth, useUser, useOrganization, UserButton, SignInButton } from "@clerk/clerk-react"
 import { useApiClient } from "@/hooks/useApiClient"
-import { DocumentStorageService, LegislationTemplate, ProjectEvaluationStatus, ProjectItem, StoredDocument } from "@/lib/documentStorageService"
+import { DocumentStorageService, LegislationTemplate, ProjectEvaluationStatus, ProjectItem, StoredDocument, type BatchUploadFailure } from "@/lib/documentStorageService"
 import { useAppAlert } from "@/hooks/useAppAlert"
 import { UploadChessLoader } from "@/components/ChessLoader"
+
+const MAX_PROJECT_BATCH_FILES = 20
+const PROJECT_BATCH_ACCEPTED_EXTENSIONS = [".pdf", ".md", ".markdown"]
+const PROJECT_BATCH_ACCEPTED_TYPES = new Set([
+  "application/pdf",
+  "text/markdown",
+  "text/x-markdown",
+  "application/x-markdown",
+])
 
 function formatProjectEta(secondsRemaining?: number | null, completionAt?: string | null) {
   if (typeof secondsRemaining === "number" && secondsRemaining > 0) {
@@ -49,6 +58,50 @@ function getShortProjectStatus(status?: ProjectEvaluationStatus | null) {
   const fromTask = status.current_task?.[0]?.trim()
 
   return fromMessage || fromTask || "Preparing project analysis"
+}
+
+function getProjectFileKey(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`
+}
+
+function isAcceptedProjectBatchFile(file: File) {
+  const lowerName = file.name.toLowerCase()
+  return (
+    PROJECT_BATCH_ACCEPTED_EXTENSIONS.some((extension) => lowerName.endsWith(extension))
+    || PROJECT_BATCH_ACCEPTED_TYPES.has(file.type)
+  )
+}
+
+function summarizeBatchUploadFailures(failedUploads: BatchUploadFailure[]) {
+  if (failedUploads.length === 0) return ""
+
+  const [firstFailure] = failedUploads
+  if (!firstFailure) return ""
+
+  if (failedUploads.length === 1) {
+    return ` 1 file failed: ${firstFailure.filename}. ${firstFailure.error}`
+  }
+
+  return ` ${failedUploads.length} files failed. First issue: ${firstFailure.filename}. ${firstFailure.error}`
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const maybeError = error as {
+    response?: {
+      data?: {
+        error?: {
+          message?: string
+        }
+        message?: string
+      }
+    }
+    message?: string
+  }
+
+  return maybeError?.response?.data?.error?.message
+    || maybeError?.response?.data?.message
+    || maybeError?.message
+    || fallback
 }
 
 export interface DashboardOutletContext {
@@ -164,6 +217,13 @@ export function DashboardLayout() {
   const [projectEvaluationStatuses, setProjectEvaluationStatuses] = useState<Record<string, ProjectEvaluationStatus>>({})
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const createProjectUploadInputRef = useRef<HTMLInputElement>(null)
+
+  const resetCreateProjectFiles = () => {
+    setNewProjectFiles([])
+    if (createProjectUploadInputRef.current) {
+      createProjectUploadInputRef.current.value = ""
+    }
+  }
 
   const refreshWorkspaceData = useCallback(async () => {
     if (!isSignedIn) {
@@ -341,7 +401,18 @@ export function DashboardLayout() {
 
   const handleCreateProject = async () => {
     const name = newProjectName.trim()
-    if (!organizationId || !name || selectedLegislationIds.length === 0) return
+    const templateIds = [...selectedLegislationIds]
+    const filesToUpload = [...newProjectFiles]
+    if (!organizationId || !name || templateIds.length === 0) return
+
+    if (filesToUpload.length > MAX_PROJECT_BATCH_FILES) {
+      toast({
+        variant: "warning",
+        title: "Too many files",
+        description: `Upload up to ${MAX_PROJECT_BATCH_FILES} files in a single batch.`,
+      })
+      return
+    }
 
     setIsCreatingProject(true)
     try {
@@ -349,29 +420,36 @@ export function DashboardLayout() {
       const project = await storageService.createProject(organizationId, {
         name,
         description: newProjectDescription.trim() || undefined,
-        legislation_template_ids: selectedLegislationIds,
+        legislation_template_ids: templateIds,
       })
 
-      if (newProjectFiles.length > 0) {
-        setCreateProjectStage(`Uploading ${newProjectFiles.length} document(s)...`)
-        await Promise.all(
-          newProjectFiles.map((file) =>
-            storageService.uploadDocument({
-              organizationId,
-              projectId: project.project_id,
-              file,
-              title: file.name.replace(/\.[^/.]+$/, ""),
-            })
-          )
-        )
+      let uploadedCount = 0
+      let failedUploads: BatchUploadFailure[] = []
+
+      if (filesToUpload.length > 0) {
+        setCreateProjectStage(`Uploading ${filesToUpload.length} document(s)...`)
+        const batchUpload = await storageService.uploadBatchDocuments({
+          organizationId,
+          projectId: project.project_id,
+          files: filesToUpload,
+        })
+
+        uploadedCount = batchUpload.documents.length
+        failedUploads = batchUpload.failed || []
       }
 
-      if (createAndRunAnalysis) {
+      const shouldRunAnalysis = createAndRunAnalysis && (filesToUpload.length === 0 || uploadedCount > 0)
+
+      if (createAndRunAnalysis && !shouldRunAnalysis) {
+        setCreateProjectStage("No documents uploaded successfully, so analysis was skipped.")
+      }
+
+      if (shouldRunAnalysis) {
         setCreateProjectStage("Starting full project analysis...")
         await storageService.startProjectEvaluation(
           organizationId,
           project.project_id,
-          selectedLegislationIds
+          templateIds
         )
 
         setSelectedProjectId(project.project_id)
@@ -413,8 +491,8 @@ export function DashboardLayout() {
       setNewProjectName("")
       setNewProjectDescription("")
       setSelectedLegislationIds([])
-      setNewProjectFiles([])
       setCreateAndRunAnalysis(true)
+      resetCreateProjectFiles()
       setIsCreateProjectOpen(false)
       setSelectedProjectId(project.project_id)
       setExpandedProjects((prev) => ({ ...prev, [project.project_id]: true }))
@@ -423,12 +501,18 @@ export function DashboardLayout() {
       await refreshProjectEvaluationStatuses()
       navigate(`/dashboard/project/${project.project_id}`)
       toast({
-        variant: "success",
-        title: "Project created",
-        description: createAndRunAnalysis
-          ? `${project.name} is ready and the full project analysis has completed.`
-          : newProjectFiles.length > 0
-            ? `${project.name} is ready and ${newProjectFiles.length} document(s) were uploaded.`
+        variant: failedUploads.length > 0 ? "warning" : "success",
+        title: failedUploads.length > 0 ? "Project created with upload issues" : "Project created",
+        description: shouldRunAnalysis
+          ? failedUploads.length > 0
+            ? `${project.name} is ready, ${uploadedCount} document(s) uploaded, and the full project analysis completed.${summarizeBatchUploadFailures(failedUploads)}`
+            : `${project.name} is ready and the full project analysis has completed.`
+          : filesToUpload.length > 0
+            ? failedUploads.length > 0
+              ? uploadedCount > 0
+                ? `${project.name} is ready and ${uploadedCount} document(s) were uploaded.${summarizeBatchUploadFailures(failedUploads)}`
+                : `${project.name} was created, but no documents uploaded successfully.${summarizeBatchUploadFailures(failedUploads)}`
+              : `${project.name} is ready and ${uploadedCount} document(s) were uploaded.`
             : `${project.name} is ready.`,
       })
     } catch (error) {
@@ -436,9 +520,9 @@ export function DashboardLayout() {
       toast({
         variant: "destructive",
         title: "Create failed",
-        description: createAndRunAnalysis
+        description: getApiErrorMessage(error, createAndRunAnalysis
           ? "Could not finish the full project setup and analysis."
-          : "Could not create project.",
+          : "Could not create project."),
       })
     } finally {
       setIsCreatingProject(false)
@@ -543,8 +627,40 @@ export function DashboardLayout() {
   }
 
   const handleNewProjectFilesSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []).filter((file) => file.type === "application/pdf")
-    setNewProjectFiles(files)
+    const selectedFiles = Array.from(event.target.files || [])
+    event.target.value = ""
+
+    if (selectedFiles.length === 0) return
+
+    const acceptedFiles = selectedFiles.filter(isAcceptedProjectBatchFile)
+    const invalidFileCount = selectedFiles.length - acceptedFiles.length
+    const seenFiles = new Set(newProjectFiles.map(getProjectFileKey))
+    const uniqueNewFiles = acceptedFiles.filter((file) => {
+      const key = getProjectFileKey(file)
+      if (seenFiles.has(key)) return false
+      seenFiles.add(key)
+      return true
+    })
+    const mergedFiles = [...newProjectFiles, ...uniqueNewFiles]
+    const overflowCount = Math.max(0, mergedFiles.length - MAX_PROJECT_BATCH_FILES)
+
+    setNewProjectFiles(mergedFiles.slice(0, MAX_PROJECT_BATCH_FILES))
+
+    if (invalidFileCount > 0) {
+      toast({
+        variant: "warning",
+        title: "Some files were skipped",
+        description: "Only PDF or Markdown files can be added to a project.",
+      })
+    }
+
+    if (overflowCount > 0) {
+      toast({
+        variant: "warning",
+        title: "File limit reached",
+        description: `${overflowCount} file(s) were not added. A batch can contain up to ${MAX_PROJECT_BATCH_FILES} files.`,
+      })
+    }
   }
 
 
@@ -560,7 +676,7 @@ export function DashboardLayout() {
 
       {isCreateProjectOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
-          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className={cn("flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl transition-colors duration-300", newProjectName.trim() && selectedLegislationIds.length > 0 && newProjectFiles.length > 0 ? "border-slate-900" : "border-slate-200")}>
             {isCreatingProject ? (
               <div className="overflow-y-auto p-4 sm:p-6">
                 <div className="rounded-3xl border border-slate-200 bg-white/90 p-10 shadow-lg backdrop-blur-md">
@@ -592,7 +708,7 @@ export function DashboardLayout() {
                         if (!isCreatingProject) {
                           setIsCreateProjectOpen(false)
                           setCreateAndRunAnalysis(true)
-                          setNewProjectFiles([])
+                          resetCreateProjectFiles()
                         }
                       }}
                       title="Close"
@@ -697,20 +813,20 @@ export function DashboardLayout() {
                           disabled={isCreatingProject}
                         >
                           <FilePlus2 className="h-4 w-4" />
-                          Add PDFs
+                          Add files
                         </Button>
                       </div>
                       <input
                         ref={createProjectUploadInputRef}
                         type="file"
-                        accept="application/pdf"
+                        accept=".pdf,.md,.markdown,application/pdf,text/markdown"
                         multiple
                         className="hidden"
                         onChange={handleNewProjectFilesSelected}
                       />
                       <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                         {newProjectFiles.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No documents selected yet. You can upload multiple PDFs at once.</p>
+                          <p className="text-sm text-muted-foreground">At least one PDF is required. You can upload up to 20 PDF or Markdown files at once.</p>
                         ) : (
                           <div className="space-y-2">
                             {newProjectFiles.map((file) => (
@@ -747,15 +863,16 @@ export function DashboardLayout() {
                       onClick={() => {
                         setIsCreateProjectOpen(false)
                         setCreateAndRunAnalysis(true)
-                        setNewProjectFiles([])
+                        resetCreateProjectFiles()
                       }}
                       disabled={isCreatingProject}
                     >
                       Cancel
                     </Button>
                     <Button
+                      variant="outline"
                       onClick={() => void handleCreateProject()}
-                      disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || isCreatingProject}
+                      disabled={!newProjectName.trim() || selectedLegislationIds.length === 0 || newProjectFiles.length === 0 || isCreatingProject}
                     >
                       Create Project
                     </Button>

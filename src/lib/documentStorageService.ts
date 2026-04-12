@@ -23,6 +23,7 @@ export interface ProjectEvaluationResult {
     legislation_id?: string | null;
     legislation_name?: string | null;
     task: string[];
+    status?: "completed" | "cancelled";
     exists: boolean;
     explanation: string;
     is_correct?: boolean;
@@ -44,6 +45,7 @@ export interface ProjectComplianceLegislationGroup {
     template_id: string;
     template_name: string;
     task_count: number;
+    correctness_score?: number;
     results: ProjectEvaluationResult[];
 }
 
@@ -53,6 +55,7 @@ export interface ProjectComplianceResult {
     documents: ProjectComplianceDocument[];
     legislation_template_ids: string[];
     legislations: ProjectComplianceLegislationGroup[];
+    correctness_score?: number;
     results: ProjectEvaluationResult[];
 }
 
@@ -64,7 +67,7 @@ export interface ProjectEvaluationJob {
 
 export interface ProjectEvaluationStatus {
     job_id: string;
-    status: "running" | "completed" | "failed";
+    status: "running" | "completed" | "failed" | "cancelling";
     organization_id: string;
     project_id: string;
     status_message?: string | null;
@@ -124,6 +127,27 @@ export interface UploadResponse {
     version_id: string;
     version_no: number;
     content_hash: string;
+}
+
+export interface BatchUploadDocument {
+    organization_id: string;
+    project_id: string | null;
+    document_id: string;
+    version_id: string;
+    version_no: number;
+    content_hash: string;
+}
+
+export interface BatchUploadFailure {
+    filename: string;
+    error: string;
+}
+
+export interface BatchUploadResponse {
+    organization_id: string;
+    project_id: string | null;
+    documents: BatchUploadDocument[];
+    failed: BatchUploadFailure[];
 }
 
 export interface GetDocumentResponse {
@@ -211,6 +235,7 @@ export interface ReasoningStep {
 
 export interface EvaluateTaskResult {
     task: string[];
+    status?: "completed" | "cancelled";
     exists: boolean;
     explanation: string;
     is_correct?: boolean;
@@ -264,7 +289,7 @@ export interface EvaluationJob {
 /** GET .../evaluation/status */
 export interface EvaluationStatus {
     job_id: string;
-    status: "running" | "completed" | "failed";
+    status: "running" | "completed" | "failed" | "cancelling";
     total_tasks: number;
     completed_count: number;
     current_task: string[] | null;
@@ -297,12 +322,25 @@ export interface EvaluateTasksResponse {
     results: EvaluateTaskResult[];
 }
 
+export interface CancelEvaluationResponse {
+    job_id: string;
+    status: "cancelling";
+    message: string;
+}
+
 export interface UploadDocumentParams {
     organizationId: string;
     projectId?: string;
     file: File;
     documentId?: string;
     title?: string;
+    message?: string;
+}
+
+export interface UploadBatchDocumentsParams {
+    organizationId?: string;
+    projectId?: string;
+    files: File[];
     message?: string;
 }
 
@@ -481,6 +519,33 @@ export class DocumentStorageService {
     }
 
     /**
+     * Uploads multiple files to a project in a single request.
+     * POST /api/documents/upload-batch
+     */
+    async uploadBatchDocuments(params: UploadBatchDocumentsParams): Promise<BatchUploadResponse> {
+        const formData = new FormData();
+
+        for (const file of params.files) {
+            formData.append("files", file);
+        }
+
+        if (params.organizationId) formData.append("organization_id", params.organizationId);
+        if (params.projectId) formData.append("project_id", params.projectId);
+        if (params.message) formData.append("message", params.message);
+
+        const response = await this.apiClient.post<BatchUploadResponse>(
+            "/documents/upload-batch",
+            formData,
+            {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            }
+        );
+        return response.data;
+    }
+
+    /**
      * Returns a paginated list of all documents for an organization.
      * GET /api/orgs/{organization_id}/documents
      */
@@ -557,6 +622,16 @@ export class DocumentStorageService {
                 `/orgs/${organizationId}/projects/${projectId}/evaluate`,
                 templateIds && templateIds.length > 0 ? { template_ids: templateIds } : {}
             )
+        );
+        return response.data;
+    }
+
+    async cancelProjectEvaluation(
+        organizationId: string,
+        projectId: string
+    ): Promise<CancelEvaluationResponse> {
+        const response = await this.apiClient.post<CancelEvaluationResponse>(
+            `/orgs/${organizationId}/projects/${projectId}/evaluate/cancel`
         );
         return response.data;
     }
