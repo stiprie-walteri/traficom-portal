@@ -62,8 +62,15 @@ function isTaskCorrect(result: ProjectEvaluationResult) {
   return result.exists !== false && missingSections.length === 0 && incorrectSections.length === 0
 }
 
+function hasReportableContent(result: ProjectEvaluationResult) {
+  if (result.status === "cancelled") return true
+  if (extractNormalizedIssues(result).length > 0) return true
+  return Boolean(result.explanation && result.explanation.trim())
+}
+
 function summarizeProjectCheck(documents: StoredDocument[], complianceResult: ProjectComplianceResult | null) {
-  const results = complianceResult?.legislations?.flatMap((group) => group.results) || complianceResult?.results || []
+  const rawResults = complianceResult?.legislations?.flatMap((group) => group.results) || complianceResult?.results || []
+  const results = rawResults.filter(hasReportableContent)
   const completedResults = results.filter((item) => item.status !== "cancelled")
 
   let findings = 0
@@ -112,6 +119,7 @@ function summarizeProjectCheck(documents: StoredDocument[], complianceResult: Pr
 
 function buildFindingRows(results: ProjectEvaluationResult[]): FindingRow[] {
   return results
+    .filter(hasReportableContent)
     .flatMap<FindingRow>((result) => {
       const taskLabel = Array.isArray(result.task) ? result.task.join(" / ") : "Finding"
       const isCancelled = result.status === "cancelled"
@@ -591,6 +599,53 @@ export function ProjectView() {
         <section className="mt-16 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Documents</p>
+              <h2 className="mt-2 text-2xl font-semibold">Project documents</h2>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {documents.map((doc) => {
+              const documentMeta = effectiveCompliance?.documents?.find((item: { document_id: string }) => item.document_id === doc.document_id)
+
+              return (
+                <Link
+                  key={doc.document_id}
+                  to={`/dashboard/document/${doc.document_id}`}
+                  state={{ projectId: id }}
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-colors hover:border-slate-300"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{doc.title || "Untitled"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(doc.created_at).toLocaleDateString()}{isProjectRunning ? " - analyzing" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-right">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Version</p>
+                      <p className="text-sm font-semibold">{documentMeta?.version_no ?? doc.current_version?.version_no ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Status</p>
+                      <p className="text-sm font-semibold">
+                        {isProjectRunning ? "Running" : effectiveCompliance ? "Ready" : "Not checked"}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+
+            {documents.length === 0 && (
+              <p className="text-sm text-muted-foreground">No documents in this project yet.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
               <div className="flex items-center gap-2">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">AI Checks</p>
                 {summary.isPartial && (
@@ -649,28 +704,11 @@ export function ProjectView() {
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{finding.taskLabel}</p>
                     <p className={`mt-2 text-sm ${finding.isCancelled ? "text-slate-400" : finding.isCorrect ? "text-green-700/80" : "text-slate-700"}`}>
                       {finding.isCancelled
                         ? "Task was not analyzed due to evaluation cancellation."
                         : finding.explanation || (finding.isCorrect ? "Task passed all checks." : "")}
                     </p>
-                    {!finding.isCancelled && (finding.solution || finding.suggestedText || finding.fixLocation) && (
-                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-900">How to fix</p>
-                        {finding.solution && (
-                          <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-950">{finding.solution}</p>
-                        )}
-                        {finding.suggestedText && finding.suggestedText !== finding.solution && (
-                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-2 text-xs text-emerald-950">
-                            {finding.suggestedText}
-                          </pre>
-                        )}
-                        {finding.fixLocation && (
-                          <p className="mt-2 text-xs text-emerald-800">{finding.fixLocation}</p>
-                        )}
-                      </div>
-                    )}
                     {!finding.isCancelled && finding.isCorrect && (
                       <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-green-700">
                         This task is correct.
@@ -721,52 +759,6 @@ export function ProjectView() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur-sm">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Documents</p>
-              <h2 className="mt-2 text-2xl font-semibold">Project documents</h2>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {documents.map((doc) => {
-              const documentMeta = effectiveCompliance?.documents?.find((item: { document_id: string }) => item.document_id === doc.document_id)
-
-              return (
-                <Link
-                  key={doc.document_id}
-                  to={`/dashboard/document/${doc.document_id}`}
-                  state={{ projectId: id }}
-                  className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-colors hover:border-slate-300"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{doc.title || "Untitled"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {new Date(doc.created_at).toLocaleDateString()}{isProjectRunning ? " - analyzing" : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 text-right">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Version</p>
-                      <p className="text-sm font-semibold">{documentMeta?.version_no ?? doc.current_version?.version_no ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Status</p>
-                      <p className="text-sm font-semibold">
-                        {isProjectRunning ? "Running" : effectiveCompliance ? "Ready" : "Not checked"}
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              )
-            })}
-
-            {documents.length === 0 && (
-              <p className="text-sm text-muted-foreground">No documents in this project yet.</p>
-            )}
-          </div>
-        </section>
       </div>
 
       {isProjectRunning && progressStatus && (
